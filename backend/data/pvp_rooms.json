@@ -1,0 +1,1 @@
+{"YL37JX": {"code": "YL37JX", "players": {"1": "Player3"}, "tanks": {"1": {"x": 1, "y": 6, "direction": "UP", "hp": 100}, "2": {"x": 8, "y": 1, "direction": "DOWN", "hp": 100}}, "winner": null, "ready": [], "programs": {}, "indexes": {"1": 0, "2": 0}, "phase": "prepare", "tick": 0, "last_active": 1783763048.2680779}}
