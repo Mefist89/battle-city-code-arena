@@ -1,148 +1,131 @@
-# 🎮 Battle City: Code Arena — Анализ проекта
+# 🎮 Battle City: Code Arena — Техническая Спецификация (v0.3 MVP)
 
 ## Общее описание
 
-**Battle City: Code Arena** — образовательная игровая платформа, вдохновлённая классической игрой "Танки". Проект находится на **ранней стадии разработки** (v0.1.0): скелет архитектуры готов, большинство директорий пока пустые.
+**Battle City: Code Arena** — образовательная игровая веб-платформа, вдохновлённая классической игрой "Танки". Проект значительно продвинулся и сейчас находится на стадии **рабочего MVP (~v0.3)**. В игре реализованы три ключевых режима, пиксельный интерфейс в стиле ретро и функционирующая интеграция фронтенда с бэкендом. 
 
 ---
 
-## 🗂️ Структура проекта
+## 🗂️ Структура проекта (Текущая)
 
-```
+```text
 battle-city-code-arena/
-├── .env                    # Переменные окружения (пустой)
-├── .gitignore
-├── docker-compose.yml      # Docker конфиг (пустой — не настроен)
-├── TZ.docx                 # Техническое задание
-├── structure.docx          # Описание архитектуры
-│
-├── frontend/               # SvelteKit + Vite + TailwindCSS 4
+├── frontend/               # Фронтенд (SvelteKit + Svelte 5 + PixiJS)
 │   ├── src/
 │   │   ├── routes/
-│   │   │   ├── +layout.svelte    # Корневой layout (иконка + CSS)
-│   │   │   ├── +page.svelte      # Главная страница (PixiJS + кнопка)
-│   │   │   └── layout.css        # Глобальные стили (shadcn-svelte токены)
+│   │   │   ├── +page.svelte        # Главная страница (Hero, Mission Protocol)
+│   │   │   ├── game/               # Game Arena (Редактор кода, PixiJS рендеринг)
+│   │   │   ├── missions/           # Каталог миссий
+│   │   │   ├── challenge/          # Выживание против AI
+│   │   │   ├── pvp/                # Мультиплеерные комнаты (WebSockets)
+│   │   │   └── layout.css          # Дизайн-система (Tailwind v4, shadcn-svelte)
 │   │   └── lib/
-│   │       ├── components/ui/    # shadcn-svelte компоненты (Button, etc.)
-│   │       ├── assets/           # favicon.svg и прочие ассеты
-│   │       ├── hooks/            # (пустая)
-│   │       ├── index.ts
-│   │       └── utils.ts
-│   ├── static/               # Статические файлы (tanks.png спрайт-лист)
-│   ├── package.json
-│   ├── svelte.config.js
-│   └── vite.config.ts
+│   └── static/             # Ассеты (Kenney CC0 спрайты, танки)
 │
-└── backend/                # FastAPI (Python)
+└── backend/                # Бэкенд API (FastAPI)
     ├── app/
-    │   ├── main.py           # Точка входа FastAPI
-    │   ├── models/           # (пустая) — Pydantic/ORM модели
-    │   ├── schemas/          # (пустая) — Pydantic схемы
-    │   ├── simulator/        # (пустая) — логика симулятора игры
-    │   └── levels/           # (пустая) — данные уровней
-    ├── Dockerfile/           # (пустая директория — Dockerfile не создан)
-    ├── requirements.txt      # (пустой — зависимости не указаны)
-    └── venv/                 # Виртуальное окружение Python
+    │   ├── main.py             # Точка входа (31 строка) — создание app, CORS, роутеры
+    │   ├── config.py           # Конфигурация приложения
+    │   ├── session_store.py    # Хранилище сессий
+    │   ├── routes/             # Роутеры API
+    │   │   ├── game.py         # /api/game/* — миссии
+    │   │   ├── pvp.py          # /api/rooms/*, /ws/* — PvP
+    │   │   └── challenge.py    # /api/challenge/* — Challenge vs AI
+    │   ├── schemas/            # Pydantic-схемы
+    │   │   └── game.py         # TankState, EnemyState, Command и т.д.
+    │   ├── simulator/          # Игровая логика
+    │   │   ├── mechanics.py    # Общие механики (перемещение, столкновения)
+    │   │   ├── mission_engine.py   # Движок миссий
+    │   │   ├── challenge_engine.py # Движок Challenge vs AI
+    │   │   ├── pvp_engine.py       # Движок PvP (комнаты, синхронизация)
+    │   │   └── python_runner.py    # Парсер/исполнитель Python-команд
+    │   └── levels/             # Данные уровней
+    └── requirements.txt    # Зависимости Python
 ```
 
 ---
 
 ## 🛠️ Технологический стек
 
-| Часть | Технология | Версия |
+| Слой | Технология | Описание / Версия |
 |---|---|---|
-| **Frontend Framework** | SvelteKit | 2.57+ |
-| **Frontend Renderer** | Svelte | 5.55+ (Runes mode) |
-| **Build Tool** | Vite | 8.0+ |
-| **CSS** | TailwindCSS v4 | 4.2+ |
-| **UI Компоненты** | shadcn-svelte | 1.2+ |
-| **Иконки** | Lucide Svelte | 1.0+ |
-| **Игровой движок** | PixiJS | 8.18+ |
-| **Backend Framework** | FastAPI | (нет в requirements.txt) |
-| **Backend язык** | Python | (venv готов) |
-| **CORS** | FastAPI CORSMiddleware | настроен на `localhost:5173` |
+| **Frontend Framework** | SvelteKit | v2.57+ |
+| **Frontend Renderer** | Svelte | v5 (Runes mode) |
+| **Стилизация** | TailwindCSS v4 | Кастомная дизайн-система |
+| **Игровой движок** | PixiJS | v8.18 |
+| **Редактор кода** | CodeMirror 6 | Поддержка Python-синтаксиса |
+| **Backend Framework** | FastAPI | Python 3.10+ |
+| **Связь** | REST API + WebSockets | Взаимодействие в реальном времени |
 
 ---
 
-## 🔌 API (текущее состояние)
+## 🎮 Реализованные режимы и фичи
 
-| Метод | URL | Описание |
+1. **Game Arena (`/game`)** — Полноценная IDE-like среда. CodeMirror 6 с автодополнением команд (`move`, `rotate`, `scan`, `fire`), поддержкой циклов `for/range`. Пиксельный рендеринг арены через PixiJS 8.
+2. **Missions (`/missions`)** — Система миссий (6 уровней), каждая со своими задачами, подсказками и различными картами стен.
+3. **Challenge vs AI (`/challenge`)** — Динамичный режим выживания. ИИ-враги имеют собственную логику поиска и стрельбы по игроку при прямой видимости.
+4. **PvP Rooms (`/pvp`)** — Мультиплеерные бои на базе WebSocket, создание сессий по 6-значному коду комнаты.
+
+---
+
+## 🔌 API Эндпоинты
+
+| Метод | Эндпоинт | Назначение |
 |---|---|---|
-| `GET` | `http://localhost:8000/` | Health check — `{"status": "online", ...}` |
-| `GET` | `http://localhost:8000/api/level/1` | Пример данных первого уровня (карта 3×5) |
+| `GET` | `/` | Health check состояния бэкенда |
+| `GET` | `/api/game/state` | Получение текущего состояния арены |
+| `POST` | `/api/game/reset` | Инициализация и сброс состояния миссии |
+| `POST` | `/api/game/command` | Выполнение Python-команды танка |
+| `POST` | `/api/rooms` | Создание новой PvP комнаты |
+| `POST` | `/api/rooms/{code}/join` | Подключение к PvP комнате |
+| `WS` | `/ws/rooms/{code}/{slot}` | WebSocket соединение для PvP синхронизации |
 
 ---
 
-## ⚠️ Проблемы / Что не готово
+## 🚀 Инструкция по запуску
 
-> [!WARNING]
-> **requirements.txt пустой** — FastAPI и Uvicorn не указаны как зависимости. Нужно добавить вручную.
+### 1. Бэкенд (FastAPI)
+```bash
+cd backend
+.venv\Scripts\activate   # На Windows
+# Или 'source .venv/bin/activate' на macOS/Linux
 
-> [!CAUTION]
-> **Dockerfile пустой** — Docker Compose не настроен. Контейнеризация не работает.
-
-> [!NOTE]
-> **Директории пустые** — `models/`, `schemas/`, `simulator/`, `levels/` — всё это ещё предстоит реализовать.
-
----
-
-## 🚀 Как запустить: Frontend
-
-### Требования: Node.js 18+
-
-```powershell
-# 1. Перейти в папку frontend
-cd c:\Users\User\Desktop\cafe-order\battle-city-code-arena\frontend
-
-# 2. Установить зависимости (если ещё не установлены — node_modules уже есть)
-npm install
-
-# 3. Запустить dev-сервер
-npm run dev
-```
-
-**Frontend будет доступен:** [http://localhost:5173](http://localhost:5173)
-
----
-
-## 🚀 Как запустить: Backend
-
-### Требования: Python 3.10+ (venv уже создан)
-
-### Шаг 1 — Установить зависимости FastAPI
-
-```powershell
-# Активировать виртуальное окружение
-c:\Users\User\Desktop\cafe-order\battle-city-code-arena\backend\venv\Scripts\activate
-
-# Установить FastAPI и Uvicorn
-pip install fastapi uvicorn
-```
-
-### Шаг 2 — Запустить сервер
-
-```powershell
-# Из папки backend
-cd c:\Users\User\Desktop\cafe-order\battle-city-code-arena\backend
-
-# Запустить с автоперезагрузкой при изменениях
+pip install fastapi uvicorn pydantic websockets anyio
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+API доступно на `http://localhost:8000`, документация — на `http://localhost:8000/docs`.
 
-**Backend будет доступен:**
-- API: [http://localhost:8000](http://localhost:8000)
-- Документация Swagger: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Документация ReDoc: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+### 2. Фронтенд (SvelteKit)
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Фронтенд будет доступен по адресу `http://localhost:5173`.
+
+> [!TIP]
+> Запускайте бэкенд перед фронтендом, чтобы избежать ошибок подключения к API на главной странице.
 
 ---
 
-## 📋 Сводная таблица запуска
+## ⚠️ Известные проблемы (Технический долг)
+- ~~**Монолит бэкенда**~~ ✅ **Решено** — `main.py` разбит на модули: `routes/`, `simulator/`, `schemas/`, `config.py`, `session_store.py`.
+- ~~**Глобальное состояние**~~ ✅ **Решено** — реализована система сессий (`SessionStore`) с UUID-идентификаторами, TTL-очисткой (30 мин) и лимитом в 200 одновременных сессий. Каждый игрок получает изолированный `MissionState` через заголовок `X-Session-Id`.
+- ~~**Docker**~~ ✅ **Решено** — настроены Dockerfile для обоих сервисов (multi-stage build, non-root user, healthcheck), `.dockerignore`, и `docker-compose.yml` с именованными volumes и зависимостью по healthcheck.
 
-| Часть | Команда | URL |
-|---|---|---|
-| Frontend | `npm run dev` (в папке `frontend/`) | `http://localhost:5173` |
-| Backend | `uvicorn app.main:app --reload` (в папке `backend/`) | `http://localhost:8000` |
+---
 
-> [!TIP]
-> Запускай **сначала backend**, потом **frontend** — иначе кнопка на главной странице выдаст ошибку подключения.
+## 🐳 Запуск через Docker
 
+```bash
+docker compose up --build
+```
+
+| Сервис | URL |
+|---|---|
+| Frontend | `http://localhost:3000` |
+| Backend API | `http://localhost:8000` |
+| API Docs (Swagger) | `http://localhost:8000/docs` |
+
+> [!NOTE]
+> Frontend стартует только после того, как backend пройдёт healthcheck.

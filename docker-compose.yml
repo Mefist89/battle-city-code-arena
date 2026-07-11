@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -9,25 +7,30 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/data:/app/data
+      - backend-data:/app/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Provide the backend URL for the frontend build
         VITE_API_URL: http://localhost:8000
     container_name: battle-city-frontend
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
-    # We might need an nginx proxy if we use /api to route to backend.
-    # But currently, the VITE_API_URL is hardcoded to http://localhost:8000 in dev.
-    # To avoid CORS issues and let the frontend directly access the backend from the user's browser,
-    # we can set VITE_API_URL to point to localhost:8000 in local Docker setup.
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - NODE_ENV=production
+      - ORIGIN=http://localhost:3000
+
+volumes:
+  backend-data:

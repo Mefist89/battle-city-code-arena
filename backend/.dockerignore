@@ -1,0 +1,8 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.runtime-deps/
+test_sim.json
+data/
+.git/
