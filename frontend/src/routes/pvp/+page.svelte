@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { page } from '$app/state';
 	import { basicSetup } from 'codemirror';
 	import { EditorView } from '@codemirror/view';
 	import { EditorState, Compartment } from '@codemirror/state';
@@ -17,7 +18,9 @@
 		ready: string[];
 		phase: 'prepare' | 'battle' | 'finished';
 		seconds_left: number;
+		map_id: number;
 	};
+	const mapId = Math.min(3, Math.max(1, Number(page.url.searchParams.get('map')) || 1));
 	const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 	const WS = API.replace(/^http/, 'ws');
 	let name = $state('Player');
@@ -43,7 +46,7 @@ fire()`);
 		const response = await fetch(`${API}${path}`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: name.trim() || 'Player' })
+			body: JSON.stringify({ name: name.trim() || 'Player', map_id: mapId })
 		});
 		if (!response.ok) throw new Error((await response.json()).detail ?? 'Request failed');
 		return response.json();
@@ -155,12 +158,6 @@ fire()`);
 			}
 		};
 	}
-	function rotation(direction: Tank['direction']) {
-		return { UP: 0, RIGHT: 90, DOWN: 180, LEFT: 270 }[direction];
-	}
-	function wallAt(x: number, y: number) {
-		return room?.walls.some((wall) => wall.x === x && wall.y === y);
-	}
 	onDestroy(() => {
 		socket?.close();
 		editor?.destroy();
@@ -177,7 +174,9 @@ fire()`);
 	>
 		<a href="/" class="font-bold text-primary">← CODECOMMAND</a>
 		<h1 class="text-xl font-bold uppercase">Player <span class="text-error">VS</span> Player</h1>
-		<div class="text-sm text-secondary-fixed">{room ? `ROOM ${room.code}` : 'ONLINE ARENA'}</div>
+		<div class="text-sm text-secondary-fixed">
+			{room ? `ROOM ${room.code} · MAP 0${room.map_id}` : `ONLINE ARENA · MAP 0${mapId}`}
+		</div>
 	</header>
 
 	{#if !room}
@@ -186,6 +185,9 @@ fire()`);
 			<p class="mb-10 text-on-surface-variant">
 				Создай приватную комнату и отправь шестизначный код другому игроку.
 			</p>
+			<a href="/pvp-maps" class="mb-7 text-sm font-bold text-tertiary uppercase hover:text-primary">
+				Карта 0{mapId} · изменить карту
+			</a>
 			<div class="grid w-full gap-6 md:grid-cols-2">
 				<section class="pixel-shadow border-4 border-secondary-fixed bg-surface-container-low p-7">
 					<h3 class="mb-5 text-xl font-bold uppercase">Создать комнату</h3>
@@ -226,7 +228,8 @@ fire()`);
 				<div class="flex items-center justify-between border-b-2 border-outline-variant px-4 py-3">
 					<div>
 						<span class="font-bold text-secondary-fixed">main.py</span><span
-							class="ml-3 text-xs text-on-surface-variant">move() · rotate('LEFT'|'RIGHT') · fire() · scan()</span
+							class="ml-3 text-xs text-on-surface-variant"
+							>move() · rotate('LEFT'|'RIGHT') · fire() · scan()</span
 						>
 					</div>
 					<div class="text-xs text-tertiary">{room.ready.length}/2 READY</div>

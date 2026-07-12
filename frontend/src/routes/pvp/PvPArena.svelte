@@ -1,14 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import {
-		Application,
-		Assets,
-		Sprite,
-		Container,
-		Graphics,
-		Text,
-		TextStyle
-	} from 'pixi.js';
+	import { Application, Assets, Sprite, Container, Graphics } from 'pixi.js';
 
 	type Tank = { x: number; y: number; direction: 'UP' | 'RIGHT' | 'DOWN' | 'LEFT'; hp: number };
 	type Room = {
@@ -51,11 +43,14 @@
 
 	let tank1Sprite: Sprite | null = null;
 	let tank2Sprite: Sprite | null = null;
-	let wallsContainer: Graphics | null = null;
+	let wallsContainer: Container | null = null;
 	let pathGraphics: Graphics | null = null;
 	let bulletsContainer: Container | null = null;
 	let blueBulletTexture: import('pixi.js').Texture | null = null;
 	let redBulletTexture: import('pixi.js').Texture | null = null;
+	let brickTexture: import('pixi.js').Texture | null = null;
+	let steelTexture: import('pixi.js').Texture | null = null;
+	let sceneReady = $state(false);
 
 	function setSpritePos(sprite: Sprite, x: number, y: number) {
 		sprite.x = x * TILE + TILE / 2;
@@ -102,20 +97,26 @@
 			grid.stroke();
 			app.stage.addChild(grid);
 
-			const [blueTank, redTank, blueBullet, redBullet] = await Promise.all([
-				Assets.load('/assets/kenney-remastered/tank_blue.png'),
-				Assets.load('/assets/kenney-remastered/tank_red.png'),
-				Assets.load('/assets/kenney-remastered/bulletBlue2.png'),
-				Assets.load('/assets/kenney-remastered/bulletRed2.png')
-			]);
+			const [blueTank, redTank, blueBullet, redBullet, loadedBrick, loadedSteel] =
+				await Promise.all([
+					Assets.load('/assets/kenney-remastered/tank_blue.png'),
+					Assets.load('/assets/kenney-remastered/tank_red.png'),
+					Assets.load('/assets/kenney-remastered/bulletBlue2.png'),
+					Assets.load('/assets/kenney-remastered/bulletRed2.png'),
+					Assets.load('/assets/kenney/wall-brick.png'),
+					Assets.load('/assets/kenney/wall-steel.png')
+				]);
 			blueBulletTexture = blueBullet;
 			redBulletTexture = redBullet;
+			brickTexture = loadedBrick;
+			steelTexture = loadedSteel;
 
 			// Create tank 1 (Blue/Default)
 			tank1Sprite = new Sprite(blueTank);
 			tank1Sprite.anchor.set(0.5);
 			tank1Sprite.width = TILE - 2;
 			tank1Sprite.scale.y = tank1Sprite.scale.x;
+			tank1Sprite.visible = false;
 			app.stage.addChild(tank1Sprite);
 
 			// Create tank 2 (Red tinted)
@@ -123,19 +124,22 @@
 			tank2Sprite.anchor.set(0.5);
 			tank2Sprite.width = TILE - 2;
 			tank2Sprite.scale.y = tank2Sprite.scale.x;
+			tank2Sprite.visible = false;
 			app.stage.addChild(tank2Sprite);
 
-			wallsContainer = new Graphics();
+			wallsContainer = new Container();
 			app.stage.addChild(wallsContainer);
 
 			pathGraphics = new Graphics();
 			app.stage.addChild(pathGraphics);
 			bulletsContainer = new Container();
 			app.stage.addChild(bulletsContainer);
+			sceneReady = true;
 		}
 	});
 
 	$effect(() => {
+		if (!sceneReady) return;
 		if (room && tank1Sprite && tank2Sprite && wallsContainer) {
 			const t1 = room.tanks['1'];
 			if (t1) {
@@ -155,13 +159,16 @@
 				tank2Sprite.visible = false;
 			}
 
-			wallsContainer.clear();
-			if (room.walls) {
+			wallsContainer.removeChildren().forEach((child) => child.destroy());
+			if (room.walls && brickTexture && steelTexture) {
 				for (const wall of room.walls) {
-					wallsContainer.rect(wall.x * TILE, wall.y * TILE, TILE, TILE);
-					wallsContainer.fill({ color: 0x4a5568 });
-					wallsContainer.setStrokeStyle({ width: 2, color: 0x2d3748 });
-					wallsContainer.stroke();
+					const alternating = (wall.x + wall.y) % 3 === 0;
+					const sprite = new Sprite(alternating ? steelTexture : brickTexture);
+					sprite.anchor.set(0.5);
+					sprite.width = TILE - 6;
+					sprite.height = TILE - 6;
+					setSpritePos(sprite, wall.x, wall.y);
+					wallsContainer.addChild(sprite);
 				}
 			}
 		}
@@ -175,9 +182,9 @@
 				const tank2 = room?.tanks['2'];
 				const fromPlayerOne =
 					!tank2 ||
-					!!tank1 &&
-					Math.abs(first.x - tank1.x) + Math.abs(first.y - tank1.y) <=
-						Math.abs(first.x - tank2.x) + Math.abs(first.y - tank2.y);
+					(!!tank1 &&
+						Math.abs(first.x - tank1.x) + Math.abs(first.y - tank1.y) <=
+							Math.abs(first.x - tank2.x) + Math.abs(first.y - tank2.y));
 				const texture = fromPlayerOne ? blueBulletTexture : redBulletTexture;
 				const next = shotPath[1] ?? first;
 				const direction =

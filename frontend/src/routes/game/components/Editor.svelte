@@ -35,6 +35,7 @@
 	import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 
 	// ── State and Props ────────────────────────────────────────────────────────
+	// eslint-disable-next-line no-useless-assignment
 	let { code = $bindable(''), cursorInfo = $bindable('Ln 1, Col 1') } = $props();
 
 	let editorDiv: HTMLDivElement | null = $state(null);

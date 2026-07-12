@@ -6,6 +6,8 @@ from app.schemas.game import ROTATE_CW, ROTATE_CCW, MOVE_DELTA
 from app.levels.missions import PVP_WALLS
 
 import random
+import ast
+from app.simulator.python_runner import validate_user_code
 
 CHALLENGE_MAPS = {
     1: set(PVP_WALLS),
@@ -115,13 +117,55 @@ def player_turn(player: dict, ai: dict, walls: set, action: str) -> dict:
         return {"kind": action, "slot": "PLAYER", "hit": hit}
     return {"kind": action, "slot": "PLAYER"}
 
-def simulate_challenge(actions: list[str], difficulty: str = "medium", map_id: int = 1) -> dict:
+def strategy_actions(code: str, player: dict, ai: dict, walls: set):
+    tree = validate_user_code(code)
+
+    def call_action(call: ast.Call) -> str | None:
+        name = call.func.id
+        if name == "rotate":
+            if call.args and isinstance(call.args[0], ast.Constant):
+                return "rotate_left" if str(call.args[0].value).upper() == "LEFT" else "rotate_right"
+            return "rotate"
+        return name if name in {"move", "fire", "scan"} else None
+
+    def execute_block(statements):
+        for statement in statements:
+            if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+                action = call_action(statement.value)
+                if action:
+                    yield action
+            elif isinstance(statement, ast.For):
+                count = 0
+                if isinstance(statement.iter, ast.Call) and statement.iter.func.id == "range":
+                    values = [arg.value for arg in statement.iter.args if isinstance(arg, ast.Constant)]
+                    count = len(range(*values)) if values else 0
+                for _ in range(min(count, 40)):
+                    yield from execute_block(statement.body)
+            elif isinstance(statement, ast.If):
+                if isinstance(statement.test, ast.Call) and statement.test.func.id == "scan":
+                    yield "scan"
+                    branch = statement.body if line_of_sight(player, ai, walls) else statement.orelse
+                    yield from execute_block(branch)
+            elif isinstance(statement, ast.While):
+                for _ in range(40):
+                    if not (isinstance(statement.test, ast.Call) and statement.test.func.id == "scan"):
+                        break
+                    yield "scan"
+                    if not line_of_sight(player, ai, walls):
+                        break
+                    yield from execute_block(statement.body)
+
+    yield from execute_block(tree.body)
+
+
+def simulate_challenge(actions: list[str], difficulty: str = "medium", map_id: int = 1, code: str | None = None) -> dict:
     hp_map = {"easy": 50, "medium": 100, "hard": 150}
     ai_hp = hp_map.get(difficulty, 100)
     
     player = {"x": 1, "y": 6, "direction": "UP", "hp": 100}
     ai = {"x": 8, "y": 1, "direction": "DOWN", "hp": ai_hp}
     walls = set(CHALLENGE_MAPS.get(map_id, CHALLENGE_MAPS[1]))
+    action_stream = strategy_actions(code, player, ai, walls) if code else iter(actions)
     
     ticks = []
     
@@ -131,7 +175,7 @@ def simulate_challenge(actions: list[str], difficulty: str = "medium", map_id: i
             
         hp_before_turn = (player["hp"], ai["hp"])
         walls_before_turn = walls.copy()
-        action = actions[_] if _ < len(actions) else None
+        action = next(action_stream, None)
         p_event = player_turn(player, ai, walls, action) if action else None
         
         a_event = None

@@ -18,6 +18,18 @@
 		owner: 'PLAYER' | 'AI';
 		direction: Direction;
 	};
+	type ReplayFrame = {
+		player: Fighter;
+		ai: Fighter;
+		walls: Array<{ x: number; y: number }>;
+		events: Array<{
+			kind: string;
+			slot: 'PLAYER' | 'AI';
+			path?: Array<{ x: number; y: number }>;
+			hit?: boolean;
+			collision?: boolean;
+		}>;
+	};
 
 	const BATTLE_DURATION = 30;
 	const TICK_MS = 420;
@@ -101,7 +113,7 @@ fire()`);
 	}
 
 	const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
-	let replayTicks: any[] = [];
+	let replayTicks: ReplayFrame[] = [];
 	let replayWinner = '';
 
 	function animateFire(
@@ -125,10 +137,7 @@ fire()`);
 		owner: 'PLAYER' | 'AI'
 	) {
 		const id = ++bulletId;
-		bullets = [
-			...bullets,
-			{ id, x: shooter.x, y: shooter.y, owner, direction: shooter.direction }
-		];
+		bullets = [...bullets, { id, x: shooter.x, y: shooter.y, owner, direction: shooter.direction }];
 		if (!path.length) {
 			setTimeout(() => {
 				bullets = bullets.filter((bullet) => bullet.id !== id);
@@ -167,17 +176,18 @@ fire()`);
 
 		player = frame.player;
 		ai = frame.ai;
-		walls = new SvelteSet(frame.walls.map((w: any) => key(w.x, w.y)));
+		walls = new SvelteSet(frame.walls.map((wall) => key(wall.x, wall.y)));
 
 		for (const event of frame.events) {
 			if (event.kind === 'fire') {
-				animateFire(event.slot === 'PLAYER' ? player : ai, event.path, event.slot);
+				const path = event.path ?? [];
+				animateFire(event.slot === 'PLAYER' ? player : ai, path, event.slot);
 				if (event.collision) {
 					if (event.slot === 'PLAYER') addLog('Bullets collided: no damage', 'info');
 					continue;
 				}
-				if (event.path.length > 0) {
-					const last = event.path[event.path.length - 1];
+				if (path.length > 0) {
+					const last = path[path.length - 1];
 					const hitTank =
 						(last.x === player.x && last.y === player.y) || (last.x === ai.x && last.y === ai.y);
 					if (!hitTank) {
@@ -213,14 +223,14 @@ fire()`);
 			const res = await fetch(`${API}/api/challenge/simulate`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ actions, difficulty, map_id: mapId })
+				body: JSON.stringify({ actions, code, difficulty, map_id: mapId })
 			});
 			if (!res.ok) throw new Error('API Error');
 			const data = await res.json();
 			replayTicks = data.ticks;
 			replayWinner = data.winner;
 			battleTimer = setInterval(battleTick, TICK_MS);
-		} catch (err) {
+		} catch {
 			addLog('Error: backend not reachable', 'error');
 			finishBattle();
 		}

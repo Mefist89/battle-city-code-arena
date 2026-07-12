@@ -1,0 +1,19 @@
+# Frontend build and dependencies
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# Python runtime and caches
+backend/.runtime-deps/
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime game state
+backend/data/pvp_rooms.json
+
+# Local configuration
+.env
+.env.*
+!.env.example

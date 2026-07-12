@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { Application, Assets, Sprite, Texture, Rectangle, Graphics, Container } from 'pixi.js';
+	import { Application, Assets, Sprite, Texture, Graphics, Container } from 'pixi.js';
 	import type { SvelteSet } from 'svelte/reactivity';
 
 	type Direction = 'UP' | 'RIGHT' | 'DOWN' | 'LEFT';

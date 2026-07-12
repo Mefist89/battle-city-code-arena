@@ -15,7 +15,14 @@
 	const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 	const missionId = Math.min(9, Math.max(1, Number(page.url.searchParams.get('mission')) || 1));
-	let mission = $state<any>(null);
+	let mission = $state<{
+		title: string;
+		combat: boolean;
+		goal: { x: number; y: number };
+		enemy: { x: number; y: number; skin?: string };
+		enemies?: Array<{ x: number; y: number; skin?: string }>;
+		walls: WallState[];
+	} | null>(null);
 	let missionLoadError = $state('');
 	let enemyStates = $state<EnemyState[]>([]);
 
@@ -31,7 +38,10 @@
 				(enemy: { x: number; y: number; skin?: string }, index: number) => ({
 					...enemy,
 					direction: 'DOWN' as const,
-					hp: enemy.skin === 'heavy' || missionId === 6 || (missionId === 8 && index === 1) ? 150 : 100,
+					hp:
+						enemy.skin === 'heavy' || missionId === 6 || (missionId === 8 && index === 1)
+							? 150
+							: 100,
 					alive: true
 				})
 			);
@@ -43,7 +53,6 @@
 
 	onMount(loadMission);
 	const INITIAL_TANK: TankState = { x: 1, y: 6, direction: 'UP', hp: 100, score: 0 };
-	const MAX_REPEAT = 100;
 
 	let missionCompleted = $state(false);
 	let battleSecondsLeft = $state(30);
@@ -76,7 +85,7 @@
 	onDestroy(stopBattleTimer);
 
 	async function executeCode() {
-		if (isRunning || !editor) return;
+		if (isRunning || !editor || !mission) return;
 		const src = editor.getCode();
 		if (!src.trim()) return;
 
@@ -149,7 +158,8 @@
 				const objectiveComplete =
 					tankState.x === mission.goal.x &&
 					tankState.y === mission.goal.y &&
-					(!mission.combat || !(tick.enemies ?? [tick.enemy]).some((enemy: EnemyState) => enemy.alive));
+					(!mission.combat ||
+						!(tick.enemies ?? [tick.enemy]).some((enemy: EnemyState) => enemy.alive));
 
 				if (!missionCompleted && objectiveComplete) {
 					missionCompleted = true;
@@ -204,6 +214,7 @@
 	}
 
 	async function resetGame() {
+		if (!mission) return;
 		try {
 			const response = await fetch(`${API}/api/game/reset?mission_id=${missionId}`, {
 				method: 'POST',
@@ -217,7 +228,10 @@
 				(enemy: { x: number; y: number; skin?: string }, index: number) => ({
 					...enemy,
 					direction: 'DOWN' as const,
-					hp: enemy.skin === 'heavy' || missionId === 6 || (missionId === 8 && index === 1) ? 150 : 100,
+					hp:
+						enemy.skin === 'heavy' || missionId === 6 || (missionId === 8 && index === 1)
+							? 150
+							: 100,
 					alive: true
 				})
 			);
@@ -266,7 +280,10 @@
 					class:border-secondary-fixed={!isRunning || battleSecondsLeft > 10}
 				>
 					<span class="text-on-surface-variant">TIME </span>
-					<span class:text-error={isRunning && battleSecondsLeft <= 10} class="font-bold text-secondary-fixed">
+					<span
+						class:text-error={isRunning && battleSecondsLeft <= 10}
+						class="font-bold text-secondary-fixed"
+					>
 						00:{String(battleSecondsLeft).padStart(2, '0')}
 					</span>
 				</div>

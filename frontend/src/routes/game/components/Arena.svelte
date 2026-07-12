@@ -1,22 +1,20 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import {
-		Application,
-		Assets,
-		Sprite,
-		Texture,
-		Graphics,
-		Text,
-		TextStyle
-	} from 'pixi.js';
+	import { Application, Assets, Sprite, Texture, Graphics, Text, TextStyle } from 'pixi.js';
 	import type { Direction, EnemyState, WallState, TankState } from '../types';
+	type MissionData = {
+		goal: { x: number; y: number };
+		walls: WallState[];
+		enemy: { x: number; y: number; skin?: string };
+		enemies?: Array<{ x: number; y: number; skin?: string }>;
+	};
 
 	let {
 		mission,
 		initialTankState
 	}: {
-		mission: any;
+		mission: MissionData;
 		initialTankState: TankState;
 	} = $props();
 
@@ -148,7 +146,7 @@
 				heavy: 'tank_bigRed.png'
 			};
 			const enemyTexture = await Assets.load(
-				`/assets/kenney-remastered/${enemySkin[mission.enemy.skin] ?? 'tank_red.png'}`
+				`/assets/kenney-remastered/${enemySkin[mission.enemy.skin ?? 'red'] ?? 'tank_red.png'}`
 			);
 			enemySprite = new Sprite(enemyTexture);
 			enemySprites = [enemySprite];
@@ -161,7 +159,7 @@
 
 			for (const extra of (mission.enemies ?? []).slice(1)) {
 				const texture = await Assets.load(
-					`/assets/kenney-remastered/${enemySkin[extra.skin] ?? 'tank_red.png'}`
+					`/assets/kenney-remastered/${enemySkin[extra.skin ?? 'red'] ?? 'tank_red.png'}`
 				);
 				const sprite = new Sprite(texture);
 				sprite.anchor.set(0.5);
@@ -420,7 +418,7 @@
 		if (tankSprite) await internalAnimateFire(tankSprite, dir);
 	}
 
-	export function restoreMissionScene(missionData: any) {
+	export function restoreMissionScene(missionData: MissionData) {
 		if (!pixiApp || !brickTexture || !steelTexture) return;
 		if (tankSprite) tankSprite.visible = true;
 		for (const sprite of wallSprites.values()) sprite.destroy();
@@ -446,13 +444,13 @@
 	}
 
 	export async function syncBattleState(
-			enemy: EnemyState,
-			walls: WallState[],
-			enemyAction: string,
-			enemies: EnemyState[] = [enemy],
-			enemyActions: string[] = [enemyAction],
-			enemyHitIndexes: number[] = []
-		) {
+		enemy: EnemyState,
+		walls: WallState[],
+		enemyAction: string,
+		enemies: EnemyState[] = [enemy],
+		enemyActions: string[] = [enemyAction],
+		enemyHitIndexes: number[] = []
+	) {
 		const activeWalls = new Set(walls.map((wall) => `${wall.x},${wall.y}`));
 		const removeDestroyedWalls = () => {
 			for (const [key, sprite] of wallSprites) {
@@ -467,7 +465,9 @@
 			if (!state) continue;
 			sprite.visible = state.alive;
 			if (state.alive) {
-				sprite.rotation = { UP: Math.PI, RIGHT: -Math.PI / 2, DOWN: 0, LEFT: Math.PI / 2 }[state.direction];
+				sprite.rotation = { UP: Math.PI, RIGHT: -Math.PI / 2, DOWN: 0, LEFT: Math.PI / 2 }[
+					state.direction
+				];
 				setSpritePos(sprite, state.x, state.y);
 				if (enemyHitIndexes.includes(index)) flashSpriteHit(sprite);
 			}

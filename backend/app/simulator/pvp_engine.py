@@ -9,10 +9,10 @@ import json
 import os
 import time
 from fastapi import WebSocket
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.game import ROTATE_CW, MOVE_DELTA
-from app.levels.missions import PVP_WALLS
+from app.levels.missions import PVP_MAPS
 from app.simulator.mechanics import ray_cells
 
 
@@ -24,6 +24,7 @@ ROOM_TTL = 7200  # 2 hours
 
 class RoomPlayer(BaseModel):
     name: str
+    map_id: int = Field(default=1, ge=1, le=3)
 
 
 # ── Room Helpers ─────────────────────────────────────────────────────────────
@@ -41,6 +42,7 @@ def save_rooms_to_disk():
     for code, room in rooms.items():
         safe_room = {k: v for k, v in room.items() if k != "connections"}
         safe_room["ready"] = list(safe_room.get("ready", []))
+        safe_room["walls"] = [list(cell) for cell in safe_room.get("walls", set())]
         safe_rooms[code] = safe_room
     
     os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
@@ -57,6 +59,8 @@ def load_rooms_from_disk():
             for code, room in loaded.items():
                 room["connections"] = {}
                 room["ready"] = set(room.get("ready", []))
+                room["map_id"] = room.get("map_id", 1)
+                room["walls"] = {tuple(cell) for cell in room.get("walls", PVP_MAPS[room["map_id"]])}
                 rooms[code] = room
         except Exception:
             pass
@@ -77,7 +81,8 @@ def public_room(room: dict) -> dict:
         "code": room["code"],
         "players": room["players"],
         "tanks": room["tanks"],
-        "walls": [{"x": x, "y": y} for x, y in PVP_WALLS],
+        "walls": [{"x": x, "y": y} for x, y in room["walls"]],
+        "map_id": room["map_id"],
         "winner": room.get("winner"),
         "ready": list(room["ready"]),
         "phase": room["phase"],
@@ -100,11 +105,13 @@ async def broadcast_room(room: dict, event: dict | None = None) -> None:
                 del room["connections"][slot]
 
 
-def create_room(player_name: str) -> dict:
+def create_room(player_name: str, map_id: int = 1) -> dict:
     """Create a new PvP room and return it."""
     code = generate_room_code()
     room = {
         "code": code,
+        "map_id": map_id,
+        "walls": set(PVP_MAPS[map_id]),
         "players": {"1": player_name},
         "tanks": {
             "1": {"x": 1, "y": 6, "direction": "UP", "hp": 100},
@@ -133,6 +140,7 @@ def pvp_action(room: dict, slot: str, action: str) -> dict:
     opponent_slot = "2" if slot == "1" else "1"
     opponent = room["tanks"][opponent_slot]
     event = {"kind": action, "slot": slot}
+    walls = room["walls"]
 
     if tank["hp"] <= 0:
         return event
@@ -147,7 +155,7 @@ def pvp_action(room: dict, slot: str, action: str) -> dict:
         if (
             0 <= target[0] <= 9
             and 0 <= target[1] <= 7
-            and target not in PVP_WALLS
+            and target not in walls
             and target != (opponent["x"], opponent["y"])
         ):
             tank["x"], tank["y"] = target
@@ -155,7 +163,7 @@ def pvp_action(room: dict, slot: str, action: str) -> dict:
         path = []
         for cell in ray_cells(tank["x"], tank["y"], tank["direction"]):
             path.append({"x": cell[0], "y": cell[1]})
-            if cell in PVP_WALLS:
+            if cell in walls:
                 break
             if cell == (opponent["x"], opponent["y"]):
                 opponent["hp"] = max(0, opponent["hp"] - 25)

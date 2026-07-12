@@ -16,8 +16,8 @@ router = APIRouter()
 @router.post("/api/rooms")
 def api_create_room(player: RoomPlayer):
     """Create a new PvP room."""
-    room = create_room(player.name)
-    return {"code": room["code"], "slot": "1"}
+    room = create_room(player.name, player.map_id)
+    return {"code": room["code"], "slot": "1", "map_id": room["map_id"]}
 
 
 @router.post("/api/rooms/{code}/join")
@@ -32,7 +32,7 @@ def api_join_room(code: str, player: RoomPlayer):
     room["players"]["2"] = player.name
     room["last_active"] = time.time()
     save_rooms_to_disk()
-    return {"code": code, "slot": "2"}
+    return {"code": code, "slot": "2", "map_id": room["map_id"]}
 
 
 @router.websocket("/ws/rooms/{code}/{slot}")

@@ -67,7 +67,8 @@
 			objective: 'Уничтожь два вражеских танка и достигни точки B (8,3).',
 			hint: 'Следи за двумя направлениями атаки и используй стены как укрытие.',
 			commands: 26,
-			color: 'text-error', border: 'border-error'
+			color: 'text-error',
+			border: 'border-error'
 		},
 		{
 			id: 8,
@@ -76,7 +77,8 @@
 			objective: 'Победи два танка, атакующих с разных сторон, и захвати B (8,3).',
 			hint: "Используй scan(), условия и rotate('LEFT'/'RIGHT').",
 			commands: 30,
-			color: 'text-tertiary', border: 'border-tertiary'
+			color: 'text-tertiary',
+			border: 'border-tertiary'
 		},
 		{
 			id: 9,
@@ -85,7 +87,8 @@
 			objective: 'Уничтожь три вражеских танка и достигни последней точки B (8,3).',
 			hint: 'Сначала уничтожь ближайшего врага, затем меняй позицию и линию огня.',
 			commands: 36,
-			color: 'text-primary', border: 'border-primary'
+			color: 'text-primary',
+			border: 'border-primary'
 		}
 	];
 </script>

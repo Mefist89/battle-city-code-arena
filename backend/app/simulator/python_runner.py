@@ -1,9 +1,36 @@
+import ast
 import sys
 from app.simulator.mission_engine import MissionState, execute_command, execute_enemy_wait
 from app.schemas.game import Command
+from app.simulator.mechanics import clear_shot
 
 class TimeoutException(Exception):
     pass
+
+
+ALLOWED_CALLS = {"move", "rotate", "fire", "scan", "range"}
+ALLOWED_NODES = (
+    ast.Module, ast.Expr, ast.Call, ast.Name, ast.Load, ast.Store, ast.Constant,
+    ast.If, ast.For, ast.While, ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE,
+    ast.Gt, ast.GtE, ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not,
+    ast.Assign, ast.Pass,
+)
+
+
+def validate_user_code(code: str) -> ast.Module:
+    """Accept only the small Python subset used by tank strategies."""
+    tree = ast.parse(code, mode="exec")
+    for node in ast.walk(tree):
+        if not isinstance(node, ALLOWED_NODES):
+            raise ValueError(f"Unsupported syntax: {type(node).__name__}")
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name) or node.func.id not in ALLOWED_CALLS:
+                raise ValueError("Only move, rotate, fire, scan and range calls are allowed")
+            if node.keywords:
+                raise ValueError("Keyword arguments are not allowed")
+        if isinstance(node, ast.Name) and node.id.startswith("__"):
+            raise ValueError("Private names are not allowed")
+    return tree
 
 def run_user_code(code: str, state: MissionState) -> dict:
     """
@@ -34,16 +61,18 @@ def run_user_code(code: str, state: MissionState) -> dict:
         return _do_command("fire")
         
     def py_scan():
-        # Scan executes as a command (taking a turn), and returns a boolean (enemy visible)
+        visible = any(
+            enemy.alive
+            and clear_shot(
+                state.tank.x, state.tank.y, enemy.x, enemy.y, state.walls
+            )
+            for enemy in state.enemies
+        )
         _do_command("scan")
-        # In current logic, scan just returns True if enemy is alive.
-        # Let's provide a slightly more useful boolean for python scripters:
-        # returns True if enemy is in the current line of sight or alive? 
-        # Actually `execute_command` logs the distance if alive. 
-        # We will just return True if enemy is alive for backward compatibility with MVP.
-        return state.enemy.alive
+        return visible
         
     safe_globals = {
+        "__builtins__": {},
         "move": py_move,
         "rotate": py_rotate,
         "fire": py_fire,
@@ -64,7 +93,8 @@ def run_user_code(code: str, state: MissionState) -> dict:
     error = None
     sys.settrace(trace_calls)
     try:
-        exec(code, safe_globals)
+        tree = validate_user_code(code)
+        exec(compile(tree, "player_strategy.py", "exec"), safe_globals)
     except TimeoutException as e:
         error = str(e)
     except Exception as e:
