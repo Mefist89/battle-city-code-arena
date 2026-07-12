@@ -9,16 +9,18 @@ MISSION_WALLS: dict[int, dict[tuple[int, int], str]] = {
     4: {(3, 2): "brick", (4, 2): "brick", (5, 4): "steel", (6, 4): "steel", (8, 5): "brick"},
     5: {(4, 2): "brick", (4, 3): "brick", (4, 4): "steel", (6, 4): "steel", (7, 4): "brick", (8, 4): "brick"},
     6: {(3, 2): "steel", (3, 3): "steel", (5, 4): "brick", (6, 4): "brick", (7, 4): "steel", (8, 4): "steel", (6, 2): "brick"},
+    7: {(3, 2): "brick", (3, 3): "steel", (5, 1): "brick", (5, 2): "brick", (6, 5): "steel", (7, 5): "brick"},
+    8: {(2, 3): "steel", (3, 3): "brick", (4, 3): "brick", (6, 2): "steel", (6, 3): "brick", (6, 4): "brick", (8, 5): "steel"},
+    9: {(2, 2): "brick", (3, 2): "steel", (4, 2): "brick", (5, 4): "brick", (6, 4): "steel", (7, 4): "brick", (4, 6): "steel", (7, 6): "brick"},
 }
 
 # Враги для каждой миссии: (x, y, hp)
-MISSION_ENEMIES: dict[int, tuple[int, int, int]] = {
-    1: (8, 5, 100),
-    2: (8, 1, 100),
-    3: (7, 5, 100),
-    4: (7, 2, 100),
-    5: (6, 2, 100),
-    6: (8, 2, 150),
+MISSION_ENEMIES: dict[int, list[tuple[int, int, int]]] = {
+    1: [(8, 5, 100)], 2: [(8, 1, 100)], 3: [(7, 5, 100)],
+    4: [(7, 2, 100)], 5: [(6, 2, 100)], 6: [(8, 2, 150)],
+    7: [(8, 1, 100), (8, 6, 100)],
+    8: [(7, 1, 100), (8, 6, 150)],
+    9: [(8, 1, 100), (8, 6, 100), (5, 1, 150)],
 }
 
 FULL_MISSIONS = {
@@ -51,7 +53,19 @@ FULL_MISSIONS = {
         "title": "Стальная крепость", "combat": True, "goal": {"x": 8, "y": 1},
         "enemy": {"x": 8, "y": 2, "skin": "red"},
         "walls": [{"x": x, "y": y, "type": t} for (x, y), t in MISSION_WALLS[6].items()]
-    }
+    },
+    7: {"title": "Двойная угроза", "combat": True, "goal": {"x": 8, "y": 3},
+        "enemy": {"x": 8, "y": 1, "skin": "red"},
+        "enemies": [{"x": 8, "y": 1, "skin": "red"}, {"x": 8, "y": 6, "skin": "green"}],
+        "walls": [{"x": x, "y": y, "type": t} for (x, y), t in MISSION_WALLS[7].items()]},
+    8: {"title": "Перекрёстный огонь", "combat": True, "goal": {"x": 8, "y": 3},
+        "enemy": {"x": 7, "y": 1, "skin": "dark"},
+        "enemies": [{"x": 7, "y": 1, "skin": "dark"}, {"x": 8, "y": 6, "skin": "sand"}],
+        "walls": [{"x": x, "y": y, "type": t} for (x, y), t in MISSION_WALLS[8].items()]},
+    9: {"title": "Тройная осада", "combat": True, "goal": {"x": 8, "y": 3},
+        "enemy": {"x": 8, "y": 1, "skin": "red"},
+        "enemies": [{"x": 8, "y": 1, "skin": "red"}, {"x": 8, "y": 6, "skin": "green"}, {"x": 5, "y": 1, "skin": "heavy"}],
+        "walls": [{"x": x, "y": y, "type": t} for (x, y), t in MISSION_WALLS[9].items()]}
 }
 
 # Стены для PvP-арены (неразрушаемые)

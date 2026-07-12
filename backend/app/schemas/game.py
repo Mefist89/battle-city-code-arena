@@ -10,6 +10,7 @@ ROTATE_CW: dict[str, Direction] = {
     "DOWN":  "LEFT",
     "LEFT":  "UP",
 }
+ROTATE_CCW: dict[str, Direction] = {value: key for key, value in ROTATE_CW.items()}
 
 # Смещение при движении вперёд
 MOVE_DELTA: dict[str, tuple[int, int]] = {
@@ -22,6 +23,7 @@ MOVE_DELTA: dict[str, tuple[int, int]] = {
 
 class Command(BaseModel):
     name: Literal["move", "rotate", "scan", "fire"]
+    turn: Optional[Literal["LEFT", "RIGHT"]] = None
 
 
 class TankState(BaseModel):
@@ -56,8 +58,10 @@ class CommandResult(BaseModel):
     state: TankState
 
     enemy: EnemyState
+    enemies: list[EnemyState] = Field(default_factory=list)
     walls: list[WallState]
     events: list[str] = Field(default_factory=list)
     enemy_action: Literal["move", "fire", "idle", "destroyed"] = "idle"
+    enemy_actions: list[Literal["move", "fire", "idle", "destroyed"]] = Field(default_factory=list)
     log: str
     session_id: Optional[str] = None

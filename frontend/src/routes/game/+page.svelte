@@ -11,12 +11,13 @@
 	let cursorInfo = $state('Ln 1, Col 1');
 	let code = $state('');
 
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
-	const missionId = Math.min(6, Math.max(1, Number(page.url.searchParams.get('mission')) || 1));
+	const missionId = Math.min(9, Math.max(1, Number(page.url.searchParams.get('mission')) || 1));
 	let mission = $state<any>(null);
 	let missionLoadError = $state('');
+	let enemyStates = $state<EnemyState[]>([]);
 
 	async function loadMission() {
 		missionLoadError = '';
@@ -26,6 +27,14 @@
 			const allMissions = await res.json();
 			mission = allMissions[missionId];
 			if (!mission) throw new Error('Mission not found');
+			enemyStates = (mission.enemies ?? [mission.enemy]).map(
+				(enemy: { x: number; y: number; skin?: string }, index: number) => ({
+					...enemy,
+					direction: 'DOWN' as const,
+					hp: enemy.skin === 'heavy' || missionId === 6 || (missionId === 8 && index === 1) ? 150 : 100,
+					alive: true
+				})
+			);
 		} catch (e) {
 			console.error('Failed to load missions', e);
 			missionLoadError = 'Не удалось загрузить миссию. Проверьте подключение к серверу.';
@@ -37,6 +46,8 @@
 	const MAX_REPEAT = 100;
 
 	let missionCompleted = $state(false);
+	let battleSecondsLeft = $state(30);
+	let battleTimer: ReturnType<typeof setInterval> | null = null;
 	let tankState = $state<TankState>({ ...INITIAL_TANK });
 	let logs = $state<LogEntry[]>([
 		{ time: now(), msg: 'System ready. Write Python and press EXECUTE.', level: 'ok' }
@@ -57,6 +68,13 @@
 		logs = [...logs, { time: now(), msg, level }];
 	}
 
+	function stopBattleTimer() {
+		if (battleTimer) clearInterval(battleTimer);
+		battleTimer = null;
+	}
+
+	onDestroy(stopBattleTimer);
+
 	async function executeCode() {
 		if (isRunning || !editor) return;
 		const src = editor.getCode();
@@ -64,6 +82,7 @@
 
 		isRunning = true;
 		missionCompleted = false;
+		battleSecondsLeft = 30;
 		try {
 			const resetResponse = await fetch(`${API}/api/game/reset?mission_id=${missionId}`, {
 				method: 'POST',
@@ -103,16 +122,34 @@
 
 			const ticks = data.ticks || [];
 			addLog(`Backend simulation complete. Playing ${ticks.length} steps.`, 'ok');
+			const battleDeadline = Date.now() + 30_000;
+			stopBattleTimer();
+			battleTimer = setInterval(() => {
+				battleSecondsLeft = Math.max(0, Math.ceil((battleDeadline - Date.now()) / 1000));
+			}, 200);
 
 			for (const tick of ticks) {
+				if (Date.now() >= battleDeadline) {
+					battleSecondsLeft = 0;
+					addLog('TIME LIMIT: 30 seconds. Battle stopped.', 'warn');
+					break;
+				}
 				addLog(`${tick.command}() → ${tick.log}`, 'cmd');
 
+				const previousPlayerHp = tankState.hp;
+				const previousEnemies = enemyStates;
 				tankState = tick.state;
+				enemyStates = (tick.enemies ?? [tick.enemy]) as EnemyState[];
+				const enemyHitIndexes = enemyStates
+					.map((enemy, index) => (enemy.hp < (previousEnemies[index]?.hp ?? enemy.hp) ? index : -1))
+					.filter((index) => index >= 0);
+				arena?.setTankAlive(tankState.hp > 0);
+				if (tankState.hp < previousPlayerHp) arena?.flashPlayerHit();
 
 				const objectiveComplete =
 					tankState.x === mission.goal.x &&
 					tankState.y === mission.goal.y &&
-					(!mission.combat || !tick.enemy.alive);
+					(!mission.combat || !(tick.enemies ?? [tick.enemy]).some((enemy: EnemyState) => enemy.alive));
 
 				if (!missionCompleted && objectiveComplete) {
 					missionCompleted = true;
@@ -121,18 +158,23 @@
 
 				if (arena) {
 					await arena.setTankDir(tankState.direction);
+					let playerShot: Promise<void> | undefined;
 					if (tick.command === 'move' && tick.ok) {
 						await arena.animateTankMove(tankState.x, tankState.y, 300);
 					} else if (tick.command === 'fire') {
-						await arena.animateTankFire(tankState.direction);
+						playerShot = arena.animateTankFire(tankState.direction);
 					} else {
 						arena.setTankPos(tankState.x, tankState.y);
 					}
-					await arena.syncBattleState(
+					const enemyPlayback = arena.syncBattleState(
 						tick.enemy as EnemyState,
 						tick.walls as WallState[],
-						tick.enemy_action
+						tick.enemy_action,
+						(tick.enemies ?? [tick.enemy]) as EnemyState[],
+						(tick.enemy_actions ?? [tick.enemy_action]) as string[],
+						enemyHitIndexes
 					);
+					await Promise.all([enemyPlayback, ...(playerShot ? [playerShot] : [])]);
 				}
 
 				for (const event of tick.events as string[]) {
@@ -156,6 +198,7 @@
 		} catch {
 			addLog('ERROR: backend not reachable', 'error');
 		} finally {
+			stopBattleTimer();
 			isRunning = false;
 		}
 	}
@@ -170,7 +213,17 @@
 			const data = await response.json();
 			if (data.session_id) sessionId = data.session_id;
 			tankState = { ...INITIAL_TANK };
+			enemyStates = (mission.enemies ?? [mission.enemy]).map(
+				(enemy: { x: number; y: number; skin?: string }, index: number) => ({
+					...enemy,
+					direction: 'DOWN' as const,
+					hp: enemy.skin === 'heavy' || missionId === 6 || (missionId === 8 && index === 1) ? 150 : 100,
+					alive: true
+				})
+			);
 			missionCompleted = false;
+			battleSecondsLeft = 30;
+			stopBattleTimer();
 			if (arena) {
 				arena.restoreMissionScene(mission);
 				arena.setTankPos(INITIAL_TANK.x, INITIAL_TANK.y);
@@ -207,6 +260,16 @@
 				</span>
 			</div>
 			<div class="flex items-center gap-2">
+				<div
+					class="border-2 bg-surface-container-low px-3 py-1 text-xs"
+					class:border-error={isRunning && battleSecondsLeft <= 10}
+					class:border-secondary-fixed={!isRunning || battleSecondsLeft > 10}
+				>
+					<span class="text-on-surface-variant">TIME </span>
+					<span class:text-error={isRunning && battleSecondsLeft <= 10} class="font-bold text-secondary-fixed">
+						00:{String(battleSecondsLeft).padStart(2, '0')}
+					</span>
+				</div>
 				<div class="border-2 border-secondary-fixed bg-surface-container-low px-3 py-1 text-xs">
 					<span class="text-on-surface-variant">TARGET </span>
 					<span class="font-bold text-secondary-fixed">({mission.goal.x},{mission.goal.y})</span>
@@ -224,10 +287,16 @@
 					<span class="font-bold text-primary">{tankState.score}</span>
 				</div>
 				<div class="border-2 border-outline-variant bg-surface-container-low px-3 py-1 text-xs">
-					<span class="text-on-surface-variant">HP </span>
+					<span class="text-on-surface-variant">PLAYER HP </span>
 					<span class:text-error={tankState.hp <= 25} class="font-bold text-secondary-fixed"
 						>{tankState.hp}</span
 					>
+				</div>
+				<div class="border-2 border-error bg-surface-container-low px-3 py-1 text-xs">
+					<span class="text-on-surface-variant">ENEMY HP </span>
+					<span class="font-bold text-error">
+						{enemyStates.length ? enemyStates.map((enemy) => enemy.hp).join('/') : '—'}
+					</span>
 				</div>
 				<button
 					onclick={resetGame}

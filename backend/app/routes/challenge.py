@@ -7,7 +7,7 @@ from app.simulator.challenge_engine import simulate_challenge
 router = APIRouter()
 
 class ChallengeRequest(BaseModel):
-    actions: list[Literal["move", "rotate", "fire", "scan"]]
+    actions: list[Literal["move", "rotate", "rotate_left", "rotate_right", "fire", "scan"]]
     difficulty: Literal["easy", "medium", "hard"] = "medium"
     map_id: Literal[1, 2, 3] = 1
 

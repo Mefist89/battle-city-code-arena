@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { Application, Assets, Sprite, Texture, Rectangle } from 'pixi.js';
+	import { Application, Assets, Sprite } from 'pixi.js';
 
 	let backendStatus = $state('');
 	let gameContainer = $state<HTMLDivElement | null>(null);
 	let previewApp: Application | null = null;
 
-	const TANK_SPRITE_URL = '/assets/tanks.png';
+	const TANK_SPRITE_URL = '/assets/kenney-remastered/tank_blue.png';
 
 	onMount(async () => {
 		if (!gameContainer) return;
@@ -20,11 +20,11 @@
 		});
 		gameContainer.appendChild(app.canvas);
 
-		const baseTexture = await Assets.load(TANK_SPRITE_URL);
-		const tankTexture = new Texture({ source: baseTexture, frame: new Rectangle(0, 0, 16, 16) });
+		const tankTexture = await Assets.load(TANK_SPRITE_URL);
 		const tank = new Sprite(tankTexture);
 		tank.anchor.set(0.5);
-		tank.scale.set(5);
+		tank.width = 92;
+		tank.scale.y = tank.scale.x;
 		tank.x = app.screen.width / 2;
 		tank.y = app.screen.height / 2;
 		app.stage.addChild(tank);
@@ -75,7 +75,7 @@
 
 		<!-- Nav links (desktop) -->
 		<div class="hidden gap-8 md:flex">
-			{#each [{ label: 'Missions', href: '/missions' }, { label: 'Challenge vs AI', href: '/challenge-maps' }, { label: 'PvP Rooms', href: '/pvp' }, { label: 'Academy', href: '#protocol' }] as link, i}
+			{#each [{ label: 'Missions', href: '/missions' }, { label: 'Challenge vs AI', href: '/challenge-maps' }, { label: 'PvP Rooms', href: '/pvp' }, { label: 'Instruction', href: '/instruction' }] as link, i}
 				<a
 					href={link.href}
 					class="border-b-4 text-lg font-bold tracking-tighter uppercase transition-all hover:translate-x-px hover:translate-y-px"
@@ -202,13 +202,15 @@
 			<!-- Fake code preview -->
 			<div class="p-6 font-mono text-sm leading-relaxed">
 				<p class="text-secondary-fixed">&gt; loading mission_01.json...</p>
-				<p class="text-on-surface-variant">&gt; map loaded: 26x26 tiles</p>
-				<p class="text-tertiary">&gt; spawning player tank at (1,1)</p>
+				<p class="text-on-surface-variant">&gt; map loaded: 10x8 tiles</p>
+				<p class="text-tertiary">&gt; spawning player tank at (1,6)</p>
 				<p class="text-primary">&gt; executing player_script.py...</p>
 				<div class="mt-4 border-2 border-outline-variant p-4">
-					<p class="text-secondary-fixed">tank.move(<span class="text-tertiary">'UP'</span>)</p>
-					<p class="text-secondary-fixed">tank.move(<span class="text-tertiary">'RIGHT'</span>)</p>
-					<p class="text-secondary-fixed">tank.fire()</p>
+					<p class="text-secondary-fixed">move()</p>
+					<p class="text-secondary-fixed">rotate(<span class="text-tertiary">'RIGHT'</span>)</p>
+					<p class="text-secondary-fixed">move()</p>
+					<p class="text-secondary-fixed">if scan():</p>
+					<p class="pl-6 text-secondary-fixed">fire()</p>
 					<p class="text-primary"># &gt;&gt; ENEMY DESTROYED! +100 XP</p>
 				</div>
 				<p class="mt-4 animate-pulse text-secondary-fixed">▮</p>
@@ -238,21 +240,18 @@
 			<span class="text-lg font-bold text-primary uppercase">CodeCommand</span>
 		</div>
 		<div class="flex flex-wrap justify-center gap-6 text-sm uppercase">
-			<a href="/game" class="text-primary underline hover:text-secondary-fixed-dim"
-				>TERMINAL_ACCESS</a
+			<a href="/" class="text-primary underline hover:text-secondary-fixed-dim"
+				>HOME</a
 			>
-			<a href="#missions" class="text-on-surface-variant hover:text-secondary-fixed-dim">MISSIONS</a
+			<a href="/missions" class="text-on-surface-variant hover:text-secondary-fixed-dim">MISSIONS</a
 			>
-			<a href="#protocol" class="text-on-surface-variant hover:text-secondary-fixed-dim">PROTOCOL</a
+			<a href="/challenge-maps" class="text-on-surface-variant hover:text-secondary-fixed-dim">CHALLENGE VS AI</a
 			>
-			<button
-				type="button"
-				onclick={checkBackend}
-				class="text-on-surface-variant hover:text-secondary-fixed-dim">SYSTEM_STATUS</button
+			<a href="/pvp" class="text-on-surface-variant hover:text-secondary-fixed-dim">PVP ROOMS</a
 			>
 		</div>
 		<div class="text-sm font-bold text-tertiary uppercase">
-			© 198X CODECOMMAND INDUSTRIES.<br />ALL BYTES RESERVED.
+			© 2016 CODECOMMAND INDUSTRIES.<br />ALL BYTES RESERVED.
 		</div>
 	</div>
 </footer>

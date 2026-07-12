@@ -1,5 +1,5 @@
 import sys
-from app.simulator.mission_engine import MissionState, execute_command
+from app.simulator.mission_engine import MissionState, execute_command, execute_enemy_wait
 from app.schemas.game import Command
 
 class TimeoutException(Exception):
@@ -12,20 +12,23 @@ def run_user_code(code: str, state: MissionState) -> dict:
     """
     ticks = []
     
-    def _do_command(name: str) -> bool:
+    def _do_command(name: str, turn: str | None = None) -> bool:
         # If player is dead, skip execution but return False to indicate failure
         if state.tank.hp <= 0:
             return False
             
-        result = execute_command(state, Command(name=name))
+        result = execute_command(state, Command(name=name, turn=turn))
         ticks.append(result.model_dump())
         return result.ok
 
     def py_move():
         return _do_command("move")
         
-    def py_rotate():
-        return _do_command("rotate")
+    def py_rotate(turn="RIGHT"):
+        normalized = str(turn).upper()
+        if normalized not in ("LEFT", "RIGHT"):
+            raise ValueError("rotate() accepts only 'LEFT' or 'RIGHT'")
+        return _do_command("rotate", normalized)
         
     def py_fire():
         return _do_command("fire")
@@ -68,6 +71,12 @@ def run_user_code(code: str, state: MissionState) -> dict:
         error = f"Error in python script: {str(e)}"
     finally:
         sys.settrace(None)
+
+    # The player's program runs exactly once. After it ends, only enemies keep
+    # taking turns so the battle itself still lasts up to 30 seconds.
+    if error is None:
+        while len(ticks) < 72 and state.tank.hp > 0:
+            ticks.append(execute_enemy_wait(state).model_dump())
         
     return {
         "ticks": ticks,

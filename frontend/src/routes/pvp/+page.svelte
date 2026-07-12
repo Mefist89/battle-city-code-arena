@@ -108,8 +108,13 @@ fire()`);
 		return code
 			.split('\n')
 			.map((line) => line.trim())
-			.filter((line) => /^(move|rotate|fire|scan)\s*\(\s*\)$/.test(line))
-			.map((line) => (line.startsWith('rotate') ? 'right' : line.slice(0, line.indexOf('('))))
+			.map((line) => {
+				if (/^rotate\s*\(\s*['"]LEFT['"]\s*\)$/i.test(line)) return 'left';
+				if (/^rotate\s*\(\s*(['"]RIGHT['"])?\s*\)$/i.test(line)) return 'right';
+				if (/^(move|fire|scan)\s*\(\s*\)$/.test(line)) return line.slice(0, line.indexOf('('));
+				return '';
+			})
+			.filter(Boolean)
 			.slice(0, 40);
 	}
 	function ready() {
@@ -221,7 +226,7 @@ fire()`);
 				<div class="flex items-center justify-between border-b-2 border-outline-variant px-4 py-3">
 					<div>
 						<span class="font-bold text-secondary-fixed">main.py</span><span
-							class="ml-3 text-xs text-on-surface-variant">move() · rotate() · fire() · scan()</span
+							class="ml-3 text-xs text-on-surface-variant">move() · rotate('LEFT'|'RIGHT') · fire() · scan()</span
 						>
 					</div>
 					<div class="text-xs text-tertiary">{room.ready.length}/2 READY</div>

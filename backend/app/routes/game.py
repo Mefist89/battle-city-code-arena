@@ -40,7 +40,7 @@ def get_state(x_session_id: Annotated[Optional[str], Header()] = None):
 
 @router.post("/api/game/reset")
 def reset_state(
-    mission_id: int = Query(default=1, ge=1, le=6),
+    mission_id: int = Query(default=1, ge=1, le=9),
     x_session_id: Annotated[Optional[str], Header()] = None
 ):
     """Reset the game state for a given mission. If no session is provided, creates a new one."""

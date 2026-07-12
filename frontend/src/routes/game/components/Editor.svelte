@@ -113,7 +113,7 @@
 							type: 'function',
 							info: 'Rotate tank 90° clockwise',
 							detail: '()',
-							apply: 'rotate()'
+							apply: "rotate('RIGHT')"
 						},
 						{
 							label: 'scan',
@@ -139,7 +139,7 @@
 	onMount(() => {
 		if (editorDiv) {
 			const startDoc = `# Battle City: Code Arena — Level 01
-# Available commands: move(), rotate(), scan(), fire()
+# Available commands: move(), rotate('LEFT'), rotate('RIGHT'), scan(), fire()
 # Loops: for i in range(N): ...
 
 `;

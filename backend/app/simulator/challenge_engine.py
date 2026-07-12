@@ -2,7 +2,7 @@
 # Simulates the Challenge mode battle entirely on the backend to avoid 
 # logic duplication. Replaces frontend loop.
 
-from app.schemas.game import ROTATE_CW, MOVE_DELTA
+from app.schemas.game import ROTATE_CW, ROTATE_CCW, MOVE_DELTA
 from app.levels.missions import PVP_WALLS
 
 import random
@@ -104,8 +104,10 @@ def ai_turn(ai: dict, player: dict, walls: set, difficulty: str) -> dict:
 def player_turn(player: dict, ai: dict, walls: set, action: str) -> dict:
     if action == "move":
         move_tank(player, ai, walls)
-    elif action == "rotate":
+    elif action in ("rotate", "rotate_right"):
         player["direction"] = ROTATE_CW[player["direction"]]
+    elif action == "rotate_left":
+        player["direction"] = ROTATE_CCW[player["direction"]]
     elif action == "fire":
         return fire_tank(player, ai, walls, "PLAYER")
     elif action == "scan":
@@ -127,12 +129,49 @@ def simulate_challenge(actions: list[str], difficulty: str = "medium", map_id: i
         if player["hp"] <= 0 or ai["hp"] <= 0:
             break
             
-        action = actions[_ % len(actions)] if actions else "scan"
-        p_event = player_turn(player, ai, walls, action)
+        hp_before_turn = (player["hp"], ai["hp"])
+        walls_before_turn = walls.copy()
+        action = actions[_] if _ < len(actions) else None
+        p_event = player_turn(player, ai, walls, action) if action else None
         
         a_event = None
         if ai["hp"] > 0:
             a_event = ai_turn(ai, player, walls, difficulty)
+
+        # Resolve simultaneous projectiles before applying tank or wall damage.
+        if (
+            p_event
+            and a_event
+            and p_event.get("kind") == "fire"
+            and a_event.get("kind") == "fire"
+        ):
+            player_path = p_event.get("path", [])
+            ai_path = a_event.get("path", [])
+            common_cells = {
+                (cell["x"], cell["y"]) for cell in player_path
+            } & {
+                (cell["x"], cell["y"]) for cell in ai_path
+            }
+            if common_cells:
+                collision = min(
+                    common_cells,
+                    key=lambda cell: abs(
+                        next(i for i, p in enumerate(player_path) if (p["x"], p["y"]) == cell)
+                        - next(i for i, p in enumerate(ai_path) if (p["x"], p["y"]) == cell)
+                    ),
+                )
+                player_index = next(
+                    i for i, p in enumerate(player_path) if (p["x"], p["y"]) == collision
+                )
+                ai_index = next(
+                    i for i, p in enumerate(ai_path) if (p["x"], p["y"]) == collision
+                )
+                p_event["path"] = player_path[: player_index + 1]
+                a_event["path"] = ai_path[: ai_index + 1]
+                p_event["collision"] = True
+                a_event["collision"] = True
+                player["hp"], ai["hp"] = hp_before_turn
+                walls = walls_before_turn
             
         ticks.append({
             "player": player.copy(),

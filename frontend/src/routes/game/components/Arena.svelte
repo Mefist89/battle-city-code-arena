@@ -30,9 +30,12 @@
 
 	let tankSprite: Sprite | null = null;
 	let enemySprite: Sprite | null = null;
+	let enemySprites: Sprite[] = [];
 	const wallSprites = new SvelteMap<string, Sprite>();
 	let brickTexture: Texture | null = null;
 	let steelTexture: Texture | null = null;
+	type ActiveBullet = { sprite: Sprite; cancelled: boolean };
+	const activeBullets: ActiveBullet[] = [];
 
 	onMount(async () => {
 		if (gameDiv) {
@@ -148,12 +151,27 @@
 				`/assets/kenney-remastered/${enemySkin[mission.enemy.skin] ?? 'tank_red.png'}`
 			);
 			enemySprite = new Sprite(enemyTexture);
+			enemySprites = [enemySprite];
 			enemySprite.anchor.set(0.5);
 			enemySprite.width = TILE - 8;
 			enemySprite.height = TILE - 8;
 			enemySprite.rotation = Math.PI;
 			setSpritePos(enemySprite, mission.enemy.x, mission.enemy.y);
 			app.stage.addChild(enemySprite);
+
+			for (const extra of (mission.enemies ?? []).slice(1)) {
+				const texture = await Assets.load(
+					`/assets/kenney-remastered/${enemySkin[extra.skin] ?? 'tank_red.png'}`
+				);
+				const sprite = new Sprite(texture);
+				sprite.anchor.set(0.5);
+				sprite.width = TILE - 8;
+				sprite.height = TILE - 8;
+				sprite.rotation = Math.PI;
+				setSpritePos(sprite, extra.x, extra.y);
+				app.stage.addChild(sprite);
+				enemySprites.push(sprite);
+			}
 		}
 	});
 
@@ -162,6 +180,7 @@
 		pixiApp = null;
 		tankSprite = null;
 		enemySprite = null;
+		enemySprites = [];
 		wallSprites.clear();
 	});
 
@@ -169,6 +188,13 @@
 	function setSpritePos(s: Sprite, x: number, y: number) {
 		s.x = x * TILE + TILE / 2;
 		s.y = y * TILE + TILE / 2;
+	}
+
+	function flashSpriteHit(sprite: Sprite) {
+		sprite.tint = 0xff3030;
+		setTimeout(() => {
+			if (!sprite.destroyed) sprite.tint = 0xffffff;
+		}, 140);
 	}
 
 	function setEnemyDir(dir: Direction) {
@@ -181,10 +207,16 @@
 		}[dir];
 	}
 
-	async function internalAnimateFire(tank: Sprite, dir: Direction) {
+	async function internalAnimateFire(
+		tank: Sprite,
+		dir: Direction,
+		bulletUrl = '/assets/kenney-remastered/bulletBlue2.png'
+	) {
 		if (!pixiApp) return;
-		const bulletTexture = await Assets.load('/assets/kenney-remastered/bulletBlue2.png');
+		const bulletTexture = await Assets.load(bulletUrl);
 		const bullet = new Sprite(bulletTexture);
+		const projectile: ActiveBullet = { sprite: bullet, cancelled: false };
+		activeBullets.push(projectile);
 		bullet.anchor.set(0.5);
 		bullet.width = Math.floor(TILE * 0.34);
 		bullet.scale.y = bullet.scale.x;
@@ -218,6 +250,54 @@
 			dist = targetX - bullet.x;
 		}
 
+		// Stop the visual projectile at the first wall, matching Challenge VS AI.
+		const tankGridX = Math.round((tank.x - TILE / 2) / TILE);
+		const tankGridY = Math.round((tank.y - TILE / 2) / TILE);
+		const [dx, dy] = {
+			UP: [0, -1],
+			RIGHT: [1, 0],
+			DOWN: [0, 1],
+			LEFT: [-1, 0]
+		}[dir];
+		let hitWall = false;
+		const trailCells: Array<{ x: number; y: number }> = [];
+		let cellX = tankGridX + dx;
+		let cellY = tankGridY + dy;
+		while (cellX >= 0 && cellX < MAP_W && cellY >= 0 && cellY < MAP_H) {
+			trailCells.push({ x: cellX, y: cellY });
+			if (wallSprites.has(`${cellX},${cellY}`)) {
+				targetX = cellX * TILE + TILE / 2;
+				targetY = cellY * TILE + TILE / 2;
+				dist = Math.abs(targetX - bullet.x) + Math.abs(targetY - bullet.y);
+				hitWall = true;
+				break;
+			}
+			const hitTank = [tankSprite, ...enemySprites].some((sprite) => {
+				if (!sprite || sprite === tank || !sprite.visible) return false;
+				const spriteX = Math.round((sprite.x - TILE / 2) / TILE);
+				const spriteY = Math.round((sprite.y - TILE / 2) / TILE);
+				return spriteX === cellX && spriteY === cellY;
+			});
+			if (hitTank) {
+				targetX = cellX * TILE + TILE / 2;
+				targetY = cellY * TILE + TILE / 2;
+				dist = Math.abs(targetX - bullet.x) + Math.abs(targetY - bullet.y);
+				hitWall = true;
+				break;
+			}
+			cellX += dx;
+			cellY += dy;
+		}
+
+		const shotTrail = new Graphics();
+		const trailColor = bulletUrl.includes('Red') ? 0xff4444 : 0x4da6ff;
+		for (const cell of trailCells) {
+			shotTrail.rect(cell.x * TILE, cell.y * TILE, TILE, TILE);
+			shotTrail.fill({ color: trailColor, alpha: 0.2 });
+		}
+		pixiApp.stage.addChild(shotTrail);
+		pixiApp.stage.setChildIndex(bullet, pixiApp.stage.children.length - 1);
+
 		const speed = (MAP_W * TILE) / 500;
 		const durationMs = dist / speed;
 
@@ -227,16 +307,56 @@
 			const startTime = performance.now();
 
 			function step(time: number) {
+				if (projectile.cancelled) {
+					setTimeout(() => shotTrail.destroy(), 80);
+					resolve();
+					return;
+				}
 				const elapsed = time - startTime;
 				const progress = Math.min(elapsed / Math.max(durationMs, 100), 1);
 
 				bullet.x = startX + (targetX - startX) * progress;
 				bullet.y = startY + (targetY - startY) * progress;
 
+				const collision = activeBullets.find(
+					(other) =>
+						other !== projectile &&
+						!other.cancelled &&
+						Math.hypot(other.sprite.x - bullet.x, other.sprite.y - bullet.y) < 18
+				);
+				if (collision) {
+					projectile.cancelled = true;
+					collision.cancelled = true;
+					for (const item of [projectile, collision]) {
+						const index = activeBullets.indexOf(item);
+						if (index >= 0) activeBullets.splice(index, 1);
+					}
+					const impact = new Graphics();
+					impact.circle(bullet.x, bullet.y, 18);
+					impact.fill({ color: 0xffffff, alpha: 0.8 });
+					pixiApp?.stage.addChild(impact);
+					if (!bullet.destroyed) bullet.destroy();
+					if (!collision.sprite.destroyed) collision.sprite.destroy();
+					setTimeout(() => impact.destroy(), 100);
+					setTimeout(() => shotTrail.destroy(), 80);
+					resolve();
+					return;
+				}
+
 				if (progress < 1) {
 					requestAnimationFrame(step);
 				} else {
+					if (hitWall && pixiApp) {
+						const impact = new Graphics();
+						impact.circle(targetX, targetY, 15);
+						impact.fill({ color: 0xffb347, alpha: 0.65 });
+						pixiApp.stage.addChild(impact);
+						setTimeout(() => impact.destroy(), 90);
+					}
 					bullet.destroy();
+					const bulletIndex = activeBullets.indexOf(projectile);
+					if (bulletIndex >= 0) activeBullets.splice(bulletIndex, 1);
+					setTimeout(() => shotTrail.destroy(), 80);
 					resolve();
 				}
 			}
@@ -247,6 +367,14 @@
 	// ── Public API ────────────────────────────────────────────────────────────
 	export function setTankPos(x: number, y: number) {
 		if (tankSprite) setSpritePos(tankSprite, x, y);
+	}
+
+	export function setTankAlive(alive: boolean) {
+		if (tankSprite) tankSprite.visible = alive;
+	}
+
+	export function flashPlayerHit() {
+		if (tankSprite?.visible) flashSpriteHit(tankSprite);
 	}
 
 	export async function setTankDir(dir: Direction) {
@@ -294,6 +422,7 @@
 
 	export function restoreMissionScene(missionData: any) {
 		if (!pixiApp || !brickTexture || !steelTexture) return;
+		if (tankSprite) tankSprite.visible = true;
 		for (const sprite of wallSprites.values()) sprite.destroy();
 		wallSprites.clear();
 		for (const wall of missionData.walls) {
@@ -306,36 +435,68 @@
 			wallSprites.set(`${wall.x},${wall.y}`, sprite);
 		}
 		if (enemySprite) {
-			enemySprite.visible = true;
-			setSpritePos(enemySprite, missionData.enemy.x, missionData.enemy.y);
-			setEnemyDir('DOWN');
+			for (const [index, sprite] of enemySprites.entries()) {
+				const data = (missionData.enemies ?? [missionData.enemy])[index];
+				if (!data) continue;
+				sprite.visible = true;
+				setSpritePos(sprite, data.x, data.y);
+				sprite.rotation = 0;
+			}
 		}
 	}
 
 	export async function syncBattleState(
-		enemy: EnemyState,
-		walls: WallState[],
-		enemyAction: string
-	) {
+			enemy: EnemyState,
+			walls: WallState[],
+			enemyAction: string,
+			enemies: EnemyState[] = [enemy],
+			enemyActions: string[] = [enemyAction],
+			enemyHitIndexes: number[] = []
+		) {
 		const activeWalls = new Set(walls.map((wall) => `${wall.x},${wall.y}`));
-		for (const [key, sprite] of wallSprites) {
-			if (!activeWalls.has(key)) {
-				sprite.destroy();
-				wallSprites.delete(key);
+		const removeDestroyedWalls = () => {
+			for (const [key, sprite] of wallSprites) {
+				if (!activeWalls.has(key)) {
+					sprite.destroy();
+					wallSprites.delete(key);
+				}
+			}
+		};
+		for (const [index, sprite] of enemySprites.entries()) {
+			const state = enemies[index];
+			if (!state) continue;
+			sprite.visible = state.alive;
+			if (state.alive) {
+				sprite.rotation = { UP: Math.PI, RIGHT: -Math.PI / 2, DOWN: 0, LEFT: Math.PI / 2 }[state.direction];
+				setSpritePos(sprite, state.x, state.y);
+				if (enemyHitIndexes.includes(index)) flashSpriteHit(sprite);
 			}
 		}
-		if (!enemySprite) return;
-		setEnemyDir(enemy.direction);
-		if (!enemy.alive) {
+		const extraShots = enemySprites
+			.map((sprite, index) => ({ sprite, state: enemies[index], action: enemyActions[index] }))
+			.filter(({ state, action }, index) => index > 0 && state?.alive && action === 'fire')
+			.map(({ sprite, state }) =>
+				internalAnimateFire(sprite, state.direction, '/assets/kenney-remastered/bulletRed2.png')
+			);
+		if (extraShots.length) await Promise.all(extraShots);
+		if (!enemySprite) {
+			removeDestroyedWalls();
+			return;
+		}
+		const primaryEnemy = enemies[0] ?? enemy;
+		const primaryAction = enemyActions[0] ?? enemyAction;
+		setEnemyDir(primaryEnemy.direction);
+		if (!primaryEnemy.alive) {
 			enemySprite.visible = false;
+			removeDestroyedWalls();
 			return;
 		}
 		enemySprite.visible = true;
-		if (enemyAction === 'move') {
+		if (primaryAction === 'move') {
 			const startX = enemySprite.x;
 			const startY = enemySprite.y;
-			const targetX = enemy.x * TILE + TILE / 2;
-			const targetY = enemy.y * TILE + TILE / 2;
+			const targetX = primaryEnemy.x * TILE + TILE / 2;
+			const targetY = primaryEnemy.y * TILE + TILE / 2;
 			await new Promise<void>((resolve) => {
 				const startTime = performance.now();
 				function step(time: number) {
@@ -347,11 +508,16 @@
 				}
 				requestAnimationFrame(step);
 			});
-		} else if (enemyAction === 'fire') {
-			await internalAnimateFire(enemySprite, enemy.direction);
+		} else if (primaryAction === 'fire') {
+			await internalAnimateFire(
+				enemySprite,
+				primaryEnemy.direction,
+				'/assets/kenney-remastered/bulletRed2.png'
+			);
 		} else {
-			setSpritePos(enemySprite, enemy.x, enemy.y);
+			setSpritePos(enemySprite, primaryEnemy.x, primaryEnemy.y);
 		}
+		removeDestroyedWalls();
 	}
 </script>
 

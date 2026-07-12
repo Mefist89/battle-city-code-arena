@@ -9,7 +9,7 @@
 	import type { LogLevel, LogEntry } from '../game/types';
 
 	type Direction = 'UP' | 'RIGHT' | 'DOWN' | 'LEFT';
-	type Action = 'move' | 'rotate' | 'fire' | 'scan';
+	type Action = 'move' | 'rotate' | 'rotate_left' | 'rotate_right' | 'fire' | 'scan';
 	type Fighter = { x: number; y: number; direction: Direction; hp: number };
 	type Bullet = {
 		id: number;
@@ -87,8 +87,11 @@ fire()`);
 		for (const raw of source.split('\n')) {
 			const line = raw.trim();
 			if (!line || line.startsWith('#')) continue;
-			const match = line.match(/^(move|rotate|fire|scan)\s*\(\s*\)\s*$/);
+			const match = line.match(/^(move|fire|scan)\s*\(\s*\)\s*$/);
 			if (match) result.push(match[1] as Action);
+			else if (/^rotate\s*\(\s*['"]LEFT['"]\s*\)\s*$/i.test(line)) result.push('rotate_left');
+			else if (/^rotate\s*\(\s*['"]RIGHT['"]\s*\)\s*$/i.test(line)) result.push('rotate_right');
+			else if (/^rotate\s*\(\s*\)\s*$/.test(line)) result.push('rotate');
 		}
 		return result.slice(0, 40);
 	}
@@ -169,6 +172,10 @@ fire()`);
 		for (const event of frame.events) {
 			if (event.kind === 'fire') {
 				animateFire(event.slot === 'PLAYER' ? player : ai, event.path, event.slot);
+				if (event.collision) {
+					if (event.slot === 'PLAYER') addLog('Bullets collided: no damage', 'info');
+					continue;
+				}
 				if (event.path.length > 0) {
 					const last = event.path[event.path.length - 1];
 					const hitTank =
@@ -195,8 +202,7 @@ fire()`);
 		if (editor) code = editor.getCode();
 		actions = parseCode(code);
 		if (!actions.length) {
-			actions = ['scan'];
-			addLog('No valid commands: scan() fallback enabled', 'warn');
+			addLog('No valid commands: player will hold position.', 'warn');
 		}
 		if (countdownTimer) clearInterval(countdownTimer);
 		phase = 'battle';
