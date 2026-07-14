@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { t } from '$lib/i18n';
 	import { basicSetup } from 'codemirror';
 	import { EditorView } from '@codemirror/view';
 	import { EditorState, Compartment } from '@codemirror/state';
@@ -24,6 +25,7 @@
 	const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 	const WS = API.replace(/^http/, 'ws');
 	let name = $state('Player');
+	let authenticated = $state(false);
 	let joinCode = $state('');
 	let room = $state<Room | null>(null);
 	let slot = $state('');
@@ -42,9 +44,30 @@ fire()`);
 	let editor: EditorView | null = null;
 	const editable = new Compartment();
 
+	onMount(async () => {
+		try {
+			const response = await fetch(`${API}/auth/me`, { credentials: 'include' });
+			const data = response.ok ? await response.json() : null;
+			if (!data?.authenticated) {
+				window.location.replace(`/auth?next=${encodeURIComponent(`/pvp?map=${mapId}`)}`);
+				return;
+			}
+			authenticated = true;
+			name = data.user?.name || data.user?.email || 'Player';
+			const currentResponse = await fetch(`${API}/api/rooms/current`, { credentials: 'include' });
+			if (currentResponse.ok) {
+				const current = await currentResponse.json();
+				if (current.room) connect(current.room.code, current.room.slot);
+			}
+		} catch {
+			window.location.replace(`/auth?next=${encodeURIComponent(`/pvp?map=${mapId}`)}`);
+		}
+	});
+
 	async function request(path: string) {
 		const response = await fetch(`${API}${path}`, {
 			method: 'POST',
+			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ name: name.trim() || 'Player', map_id: mapId })
 		});
@@ -52,6 +75,7 @@ fire()`);
 		return response.json();
 	}
 	async function createRoom() {
+		if (!authenticated) return;
 		try {
 			error = '';
 			const data = await request('/api/rooms');
@@ -61,6 +85,7 @@ fire()`);
 		}
 	}
 	async function joinRoom() {
+		if (!authenticated) return;
 		try {
 			error = '';
 			const code = joinCode.trim().toUpperCase();
@@ -97,12 +122,17 @@ fire()`);
 			if (room?.winner)
 				status = room.winner === 'draw' ? 'НИЧЬЯ' : room.winner === slot ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ';
 		};
-		socket.onclose = () => {
-			if (!room?.winner && reconnectAttempts < 5) {
+		socket.onclose = (event) => {
+			const permanentClose = [4400, 4401, 4403, 4404, 4408, 4409, 4429].includes(event.code);
+			if (!room?.winner && !permanentClose && reconnectAttempts < 5) {
 				status = `Переподключение... (Попытка ${reconnectAttempts + 1}/5)`;
 				reconnectAttempts++;
 				setTimeout(() => connect(code, playerSlot), 3000);
 			} else if (!room?.winner) {
+				if (event.code === 4401) {
+					window.location.replace(`/auth?next=${encodeURIComponent(`/pvp?map=${mapId}`)}`);
+					return;
+				}
 				status = 'Соединение потеряно навсегда.';
 			}
 		};
@@ -165,15 +195,15 @@ fire()`);
 </script>
 
 <svelte:head>
-	<title>PvP Multiplayer — Battle City: Code Arena</title>
+	<title>PvP Multiplayer — CODETANK ARENA</title>
 </svelte:head>
 
 <div class="min-h-screen bg-surface text-on-surface">
 	<header
 		class="flex h-16 items-center justify-between border-b-4 border-outline-variant bg-surface-container-low px-6"
 	>
-		<a href="/" class="font-bold text-primary">← CODECOMMAND</a>
-		<h1 class="text-xl font-bold uppercase">Player <span class="text-error">VS</span> Player</h1>
+		<a href="/" class="font-bold text-primary">{$t('common.backHome')}</a>
+		<h1 class="text-xl font-bold uppercase">{$t('pvp.title')}</h1>
 		<div class="text-sm text-secondary-fixed">
 			{room ? `ROOM ${room.code} · MAP 0${room.map_id}` : `ONLINE ARENA · MAP 0${mapId}`}
 		</div>
@@ -181,30 +211,30 @@ fire()`);
 
 	{#if !room}
 		<main class="mx-auto flex max-w-4xl flex-col items-center px-6 py-16">
-			<h2 class="mb-3 text-4xl font-bold text-primary uppercase">PvP Room</h2>
-			<p class="mb-10 text-on-surface-variant">
-				Создай приватную комнату и отправь шестизначный код другому игроку.
-			</p>
+			<h2 class="mb-3 text-4xl font-bold text-primary uppercase">{$t('pvp.room')}</h2>
+			<p class="mb-10 text-on-surface-variant">{$t('pvp.intro')}</p>
 			<a href="/pvp-maps" class="mb-7 text-sm font-bold text-tertiary uppercase hover:text-primary">
-				Карта 0{mapId} · изменить карту
+				{$t('pvp.changeMap', { map: mapId })}
 			</a>
 			<div class="grid w-full gap-6 md:grid-cols-2">
 				<section class="pixel-shadow border-4 border-secondary-fixed bg-surface-container-low p-7">
-					<h3 class="mb-5 text-xl font-bold uppercase">Создать комнату</h3>
+					<h3 class="mb-5 text-xl font-bold uppercase">{$t('pvp.create')}</h3>
 					<input
 						bind:value={name}
+						readonly
 						maxlength="20"
-						placeholder="Твоё имя"
+						placeholder={$t('pvp.name')}
 						class="mb-5 w-full border-2 border-outline bg-black p-3 outline-none focus:border-primary"
 					/>
 					<button
 						onclick={createRoom}
-						class="pixel-btn w-full bg-secondary-fixed p-4 font-bold text-on-secondary uppercase"
-						>Создать</button
+						disabled={!authenticated}
+						class="pixel-btn w-full bg-secondary-fixed p-4 font-bold text-on-secondary uppercase disabled:opacity-40"
+						>{$t('pvp.create')}</button
 					>
 				</section>
 				<section class="pixel-shadow border-4 border-primary bg-surface-container-low p-7">
-					<h3 class="mb-5 text-xl font-bold uppercase">Войти по коду</h3>
+					<h3 class="mb-5 text-xl font-bold uppercase">{$t('pvp.join')}</h3>
 					<input
 						bind:value={joinCode}
 						maxlength="6"
@@ -213,8 +243,9 @@ fire()`);
 					/>
 					<button
 						onclick={joinRoom}
-						class="pixel-btn w-full bg-primary-container p-4 font-bold uppercase"
-						>Подключиться</button
+						disabled={!authenticated}
+						class="pixel-btn w-full bg-primary-container p-4 font-bold uppercase disabled:opacity-40"
+						>{$t('pvp.connect')}</button
 					>
 				</section>
 			</div>
@@ -243,7 +274,7 @@ fire()`);
 						onclick={ready}
 						disabled={!room.players['2'] || room.ready.includes(slot) || room.phase !== 'prepare'}
 						class="pixel-btn bg-secondary-fixed px-7 py-3 font-bold text-on-secondary uppercase disabled:opacity-40"
-						>{room.ready.includes(slot) ? '✓ Готово' : 'Готово'}</button
+						>{room.ready.includes(slot) ? `✓ ${$t('pvp.ready')}` : $t('pvp.ready')}</button
 					>
 				</div>
 			</section>

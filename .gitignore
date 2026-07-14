@@ -12,6 +12,7 @@ venv/
 
 # Runtime game state
 backend/data/pvp_rooms.json
+backend/data/user_progress.json
 
 # Local configuration
 .env

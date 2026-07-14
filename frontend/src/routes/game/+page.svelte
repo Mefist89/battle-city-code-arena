@@ -77,6 +77,20 @@
 		logs = [...logs, { time: now(), msg, level }];
 	}
 
+	async function saveMissionProgress(score: number) {
+		try {
+			const response = await fetch(`${API}/auth/progress/missions/${missionId}`, {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ score })
+			});
+			if (response.ok) addLog('Profile progress saved.', 'ok');
+		} catch {
+			// A profile is optional; a network error must not interrupt the mission.
+		}
+	}
+
 	function stopBattleTimer() {
 		if (battleTimer) clearInterval(battleTimer);
 		battleTimer = null;
@@ -164,6 +178,7 @@
 				if (!missionCompleted && objectiveComplete) {
 					missionCompleted = true;
 					addLog(`MISSION ${missionId} COMPLETE! Цель выполнена.`, 'ok');
+					void saveMissionProgress(tankState.score);
 				}
 
 				if (arena) {
@@ -255,7 +270,7 @@
 </script>
 
 <svelte:head>
-	<title>Single-Player — Battle City: Code Arena</title>
+	<title>Single-Player — CODETANK ARENA</title>
 </svelte:head>
 
 <div class="flex h-screen flex-col overflow-hidden bg-surface font-mono text-sm text-on-surface">

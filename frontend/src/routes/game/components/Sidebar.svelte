@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	const COMMANDS = [
 		{ insert: 'move()', label: 'move()', desc: 'Forward 1 unit', icon: '↑', color: '#ffb778' },
 		{
@@ -41,6 +42,16 @@
 	] as const;
 
 	let { onInsertCommand }: { onInsertCommand: (cmd: string) => void } = $props();
+	function commandKey(insert: string) {
+		if (insert.startsWith("rotate('RIGHT')")) return 'right';
+		if (insert.startsWith("rotate('LEFT')")) return 'left';
+		if (insert.startsWith('move')) return 'move';
+		if (insert.startsWith('scan')) return 'scan';
+		if (insert.startsWith('fire')) return 'fire';
+		if (insert.startsWith('if')) return 'if';
+		if (insert.startsWith('while')) return 'while';
+		return 'for';
+	}
 </script>
 
 <aside
@@ -49,13 +60,13 @@
 	<div
 		class="border-b-2 border-outline-variant px-3 py-2 text-xs font-bold tracking-widest text-on-surface-variant uppercase"
 	>
-		API COMMANDS
+		{$t('sidebar.title')}
 	</div>
 	<div class="flex flex-col gap-0.5 overflow-y-auto p-2">
 		{#each COMMANDS as cmd}
 			<button
 				onclick={() => onInsertCommand(cmd.insert)}
-				title="Insert at cursor"
+				title={$t('sidebar.insert')}
 				class="group flex items-center gap-2 border-2 border-transparent p-2 text-left transition-all hover:border-outline-variant hover:bg-surface-container"
 			>
 				<span
@@ -66,14 +77,16 @@
 				</span>
 				<div>
 					<div class="text-xs font-bold" style="color:{cmd.color};">{cmd.label}</div>
-					<div class="text-[10px] text-on-surface-variant">{cmd.desc}</div>
+					<div class="text-[10px] text-on-surface-variant">
+						{$t(`sidebar.${commandKey(cmd.insert)}`)}
+					</div>
 				</div>
 			</button>
 		{/each}
 	</div>
 	<div class="mt-auto border-t-2 border-outline-variant p-3">
 		<div class="mb-1 text-[10px] tracking-widest text-on-surface-variant uppercase">
-			Loop syntax
+			{$t('sidebar.loop')}
 		</div>
 		<pre class="text-[10px] leading-relaxed text-secondary-fixed/70">for i in range(3):
     move()

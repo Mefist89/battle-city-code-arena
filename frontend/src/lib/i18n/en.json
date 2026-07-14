@@ -1,0 +1,318 @@
+{
+	"common": {
+		"brand": "CODETANK ARENA",
+		"backHome": "← CODETANK ARENA",
+		"home": "Home",
+		"missions": "Missions",
+		"challenge": "Arena vs AI",
+		"pvp": "Player vs Player",
+		"instruction": "Instructions",
+		"signIn": "Sign in",
+		"profile": "Profile",
+		"start": "Launch",
+		"changeMap": "Change map",
+		"copyright": "© 2026 CODETANK ARENA. All bytes reserved."
+	},
+	"auth": {
+		"pageTitle": "Sign in — CODETANK ARENA",
+		"eyebrow": "COMMAND CENTER ACCESS",
+		"title": "Keep your progress",
+		"subtitle": "Sign in to save missions, strategies, and PvP results.",
+		"login": "Sign in",
+		"register": "Register",
+		"name": "Commander name",
+		"namePlaceholder": "PLAYER_01",
+		"email": "Email",
+		"emailPlaceholder": "commander@example.com",
+		"password": "Password",
+		"passwordPlaceholder": "At least 8 characters",
+		"confirmPassword": "Confirm password",
+		"remember": "Remember me",
+		"forgot": "Forgot password?",
+		"loginButton": "Sign in to system",
+		"registerButton": "Create account",
+		"or": "or continue with",
+		"google": "Google",
+		"github": "GitHub",
+		"emailUnavailable": "Email sign-in and registration are temporarily unavailable",
+		"useSocial": "Use secure Google or GitHub sign-in.",
+		"providerNotice": "{provider} sign-in will be available after OAuth keys are configured.",
+		"oauthError": "Google did not complete sign-in. Check the test user and callback URL.",
+		"welcome": "Commander authenticated",
+		"logout": "Sign out",
+		"serverNotice": "The form is ready. A user authentication server must be connected for real sign-in.",
+		"passwordMismatch": "Passwords do not match.",
+		"passwordShort": "Password must contain at least 8 characters.",
+		"terms": "By creating an account, you agree to the arena rules.",
+		"secure": "SECURE CHANNEL // OAuth 2.0 READY",
+		"featureOne": "Mission progress synchronization",
+		"featureTwo": "Saved battle strategies",
+		"featureThree": "Match history and PvP ranking"
+	},
+	"profile": {
+		"pageTitle": "Profile — CODETANK ARENA",
+		"eyebrow": "COMMANDER PERSONNEL FILE",
+		"title": "Player profile",
+		"subtitle": "Mission progress and best results are saved after each victory.",
+		"completed": "Missions completed",
+		"score": "Total score",
+		"progress": "Campaign progress",
+		"campaign": "Campaign",
+		"complete": "Complete",
+		"notComplete": "Not complete",
+		"bestScore": "Best score",
+		"play": "Open mission",
+		"signedWith": "Signed in with {provider}",
+		"loginRequired": "Sign in with Google to view and save your progress.",
+		"goLogin": "Go to sign in",
+		"loadError": "Could not load profile. Check the backend.",
+		"signingOut": "Signing out...",
+		"logoutError": "Could not sign out. Please try again."
+	},
+	"home": {
+		"meta": "Program your tank, destroy walls, and battle AI or other players.",
+		"heroEyebrow": "EDUCATIONAL TACTICAL GAME",
+		"heroTitle": "CODE. TANKS. VICTORY.",
+		"heroText": "Write tank-control programs, complete missions, and test your algorithms against AI and other players.",
+		"startMission": "Start mission",
+		"openInstruction": "Open instructions",
+		"chooseMode": "Choose battle mode",
+		"chooseModeText": "Three modes—from learning the basics to competing with player-written algorithms.",
+		"campaignLabel": "Campaign progression",
+		"campaignTitle": "Nine missions. One commander.",
+		"campaignText": "Start with a route from point A to B. Learn to rotate, use loops, scan the field, and battle multiple enemies.",
+		"viewCampaign": "View campaign",
+		"ready": "Ready for deployment?",
+		"victory": "Your code. Your tank. Your victory.",
+		"startCoding": "Start coding",
+		"createPvp": "Create PvP room",
+		"insertCartridge": "Insert cartridge →",
+		"protocolLabel": "Mission protocol",
+		"protocolTitle": "From code to victory",
+		"interfaceLabel": "Command interface",
+		"interfaceTitle": "Program the tank",
+		"interfaceText": "Use a small, clear command set, then combine commands with conditions and loops.",
+		"fullInstruction": "Open full instructions →",
+		"mechanicsLabel": "Arena systems",
+		"mechanicsTitle": "Battle mechanics",
+		"mechanicsText": "Every mechanic is visible on the field and affects the result of your program.",
+		"modes": {
+			"01": {
+				"title": "MISSION MODE",
+				"tag": "9 LEVELS",
+				"description": "Progress from basic movement to battling three autonomous enemy tanks at once."
+			},
+			"02": {
+				"title": "CHALLENGE VS AI",
+				"tag": "3 ARENAS",
+				"description": "Write a strategy in 60 seconds and test it against Easy, Medium, or Hard AI."
+			},
+			"03": {
+				"title": "PLAYER VS PLAYER",
+				"tag": "REAL TIME",
+				"description": "Create a room, share the invitation code, and battle player-written strategies in real time."
+			}
+		},
+		"steps": {
+			"01": { "title": "WRITE", "text": "Build a strategy from commands, conditions, and loops." },
+			"02": {
+				"title": "VALIDATE",
+				"text": "The safe interpreter checks your code and its limits."
+			},
+			"03": { "title": "DEPLOY", "text": "The tank executes your commands on a 10×8 grid arena." },
+			"04": { "title": "IMPROVE", "text": "Study the battle log, fix your algorithm, and win." }
+		},
+		"mechanics": {
+			"0": { "title": "GRID MOVEMENT", "text": "Each move() advances the tank exactly one cell." },
+			"1": { "title": "BRICK WALLS", "text": "Brick breaks with one hit and opens a new route." },
+			"2": {
+				"title": "STEEL BLOCKS",
+				"text": "Steel cannot be destroyed; go around it or use it as cover."
+			},
+			"3": {
+				"title": "PROJECTILES",
+				"text": "Bullets collide, disappear, and cannot pass through tanks."
+			},
+			"4": { "title": "HP SYSTEM", "text": "Hits reduce HP, and a damaged tank flashes red." },
+			"5": {
+				"title": "LIVE AI",
+				"text": "Enemies move, seek firing lines, and destroy brick walls."
+			}
+		}
+	},
+	"missions": {
+		"pageTitle": "Missions — CODETANK ARENA",
+		"control": "Mission control",
+		"eyebrow": "Training campaign",
+		"title": "The tank commander's path",
+		"intro": "Write a program that controls your tank. Reach point B in early missions; in combat missions, destroy the enemy first.",
+		"estimate": "Target: {count} commands",
+		"launch": "Launch mission",
+		"items": {
+			"1": {
+				"title": "Straight route",
+				"difficulty": "Easy",
+				"objective": "Move the tank from A (1,6) to B (1,2).",
+				"hint": "Use move() and a range() loop."
+			},
+			"2": {
+				"title": "First turn",
+				"difficulty": "Medium",
+				"objective": "Move the tank from A (1,6) to B (5,2).",
+				"hint": "Move upward first, then turn right."
+			},
+			"3": {
+				"title": "Commander's route",
+				"difficulty": "Hard",
+				"objective": "Move the tank from A (1,6) to B (8,1).",
+				"hint": "Build the route with two loops and one turn."
+			},
+			"4": {
+				"title": "First battle",
+				"difficulty": "Combat",
+				"objective": "Destroy the red tank and capture point B (7,1).",
+				"hint": "Use scan(), rotation, and accurate shots."
+			},
+			"5": {
+				"title": "Fire corridor",
+				"difficulty": "Tough",
+				"objective": "Destroy the brick cover, eliminate the enemy, and reach B (8,2).",
+				"hint": "Steel cannot be destroyed—find a firing line through brick."
+			},
+			"6": {
+				"title": "Steel fortress",
+				"difficulty": "Commander",
+				"objective": "Defeat the reinforced 150 HP tank and capture B (8,1).",
+				"hint": "Several hits are required. Use walls as cover."
+			},
+			"7": {
+				"title": "Double threat",
+				"difficulty": "2 enemies",
+				"objective": "Destroy two enemy tanks and reach B (8,3).",
+				"hint": "Watch both attack directions and use cover."
+			},
+			"8": {
+				"title": "Crossfire",
+				"difficulty": "2 strong enemies",
+				"objective": "Defeat two tanks attacking from different sides and capture B (8,3).",
+				"hint": "Use scan(), conditions, and rotate('LEFT'/'RIGHT')."
+			},
+			"9": {
+				"title": "Triple siege",
+				"difficulty": "3 enemies",
+				"objective": "Destroy three enemy tanks and reach point B (8,3).",
+				"hint": "Destroy the closest enemy first, then change position and firing line."
+			}
+		}
+	},
+	"maps": {
+		"pvpAuthRequired": "Sign in with Google or GitHub to create or join a protected PvP room.",
+		"eyebrow": "Choose a battlefield",
+		"challengeTitle": "Choose an arena",
+		"challengeIntro": "Each map uses the same AI, but the block layout changes routes and lines of fire.",
+		"pvpTitle": "Choose a PvP map",
+		"pvpIntro": "The map is saved with the room. Both players see the same walls and battle in the selected arena.",
+		"launch": "Launch arena",
+		"enter": "Create or join",
+		"items": {
+			"1": {
+				"title": "Classic arena",
+				"challengeDifficulty": "Medium",
+				"pvpDifficulty": "Balanced",
+				"challengeDescription": "Symmetrical fortifications and a central square.",
+				"pvpDescription": "Symmetrical fortifications and a central square for a fair opening battle."
+			},
+			"2": {
+				"title": "Twin corridors",
+				"challengeDifficulty": "Tactical",
+				"pvpDifficulty": "Tactical",
+				"challengeDescription": "Long passages and positions for ranged shots.",
+				"pvpDescription": "Long firing lanes and narrow passages for accurate shots and ambushes."
+			},
+			"3": {
+				"title": "Broken fortress",
+				"challengeDifficulty": "Hard",
+				"pvpDifficulty": "Hard",
+				"challengeDescription": "Scattered cover forces you to keep changing your route.",
+				"pvpDescription": "Scattered cover requires constant route and attack-direction changes."
+			}
+		}
+	},
+	"pvp": {
+		"title": "Player vs Player",
+		"room": "PvP Room",
+		"intro": "Create a private room and send the six-character code to another player.",
+		"create": "Create room",
+		"join": "Join with code",
+		"name": "Your name",
+		"connect": "Connect",
+		"ready": "Ready",
+		"waiting": "Waiting...",
+		"changeMap": "Map 0{map} · change map"
+	},
+	"challenge": {
+		"title": "Challenge vs AI",
+		"codeTime": "Coding time",
+		"battleTime": "Battle time",
+		"finished": "Battle finished",
+		"ready": "✓ READY",
+		"clear": "CLEAR",
+		"output": "SYSTEM OUTPUT",
+		"level": "LEVEL",
+		"playerHp": "PLAYER HP",
+		"aiHp": "AI HP"
+	},
+	"sidebar": {
+		"title": "API COMMANDS",
+		"insert": "Insert at cursor",
+		"loop": "Loop syntax",
+		"move": "Forward 1 cell",
+		"right": "Turn 90° right",
+		"left": "Turn 90° left",
+		"scan": "Detect enemies",
+		"fire": "Fire cannon",
+		"if": "Run when condition is true",
+		"while": "Repeat while condition is true",
+		"for": "Repeat a fixed number of times"
+	},
+	"instruction": {
+		"manual": "Instructions // Manual",
+		"start": "START",
+		"guide": "CODETANK ARENA Programming Guide",
+		"title": "Tank controls",
+		"intro": "You control the tank with a program, not keyboard keys. Commands run from top to bottom. In arena mode, the prepared sequence repeats until the battle ends.",
+		"commands": "01 // Core commands",
+		"logic": "02 // Conditions and loops",
+		"ifTitle": "if — condition",
+		"ifText": "Runs nested commands only when the condition is true.",
+		"forTitle": "for — exact repetition",
+		"forText": "Repeats a nested block a specified number of times.",
+		"whileTitle": "while — conditional repetition",
+		"whileText": "Repeats a block while its condition remains true. Use it carefully.",
+		"strategy": "03 // Strategy example",
+		"rules": "04 // Arena rules",
+		"grid": "Grid: move() advances the tank exactly one cell.",
+		"brick": "Brick: breaks with one hit and stops that projectile.",
+		"steel": "Steel: blocks the tank and cannot be destroyed.",
+		"collision": "Collision: two tanks cannot occupy the same cell.",
+		"victory": "Victory: complete the mission objective or destroy the opponent.",
+		"commandDetails": {
+			"move": {
+				"description": "Moves the tank one cell forward in the barrel's direction.",
+				"details": "The tank cannot move through the map boundary, a wall, or another tank."
+			},
+			"rotate": {
+				"description": "Rotates the tank 90° in the selected direction.",
+				"details": "rotate('LEFT') turns left and rotate('RIGHT') turns right. rotate() also turns right."
+			},
+			"scan": {
+				"description": "Checks whether an enemy is in the line of fire.",
+				"details": "Scanning works horizontally and vertically. Walls block visibility."
+			},
+			"fire": {
+				"description": "Fires a projectile in the tank barrel's direction.",
+				"details": "A projectile damages tanks. The first brick block in its path is destroyed and stops the projectile."
+			}
+		}
+	}
+}

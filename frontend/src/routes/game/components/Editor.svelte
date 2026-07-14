@@ -139,7 +139,7 @@
 	// ── Init CodeMirror ───────────────────────────────────────────────────────
 	onMount(() => {
 		if (editorDiv) {
-			const startDoc = `# Battle City: Code Arena — Level 01
+			const startDoc = `# CODETANK ARENA — Level 01
 # Available commands: move(), rotate('LEFT'), rotate('RIGHT'), scan(), fire()
 # Loops: for i in range(N): ...
 

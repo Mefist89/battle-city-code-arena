@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
+	import { t } from '$lib/i18n';
 	import { SvelteSet } from 'svelte/reactivity';
 	import Sidebar from '../game/components/Sidebar.svelte';
 	import Editor from '../game/components/Editor.svelte';
@@ -272,7 +273,7 @@ fire()`);
 </script>
 
 <svelte:head>
-	<title>Challenge Mode — Battle City: Code Arena</title>
+	<title>Challenge Mode — CODETANK ARENA</title>
 </svelte:head>
 
 <div class="flex h-screen flex-col overflow-hidden bg-surface font-mono text-sm text-on-surface">
@@ -283,7 +284,11 @@ fire()`);
 		class:border-tertiary={phase !== 'prepare'}
 	>
 		<div class="text-[8px] font-bold tracking-widest text-on-surface-variant uppercase">
-			{phase === 'prepare' ? 'Время на код' : phase === 'battle' ? 'Время боя' : 'Бой завершён'}
+			{phase === 'prepare'
+				? $t('challenge.codeTime')
+				: phase === 'battle'
+					? $t('challenge.battleTime')
+					: $t('challenge.finished')}
 		</div>
 		<div
 			class="text-center text-lg leading-tight font-bold"
@@ -328,13 +333,13 @@ fire()`);
 				</div>
 			{/if}
 			<div class="border-2 border-outline-variant bg-surface-container-low px-3 py-1 text-xs">
-				<span class="text-on-surface-variant">PLAYER HP </span>
+				<span class="text-on-surface-variant">{$t('challenge.playerHp')} </span>
 				<span class:text-error={player.hp <= 25} class="font-bold text-secondary-fixed"
 					>{player.hp}</span
 				>
 			</div>
 			<div class="border-2 border-outline-variant bg-surface-container-low px-3 py-1 text-xs">
-				<span class="text-on-surface-variant">AI HP </span>
+				<span class="text-on-surface-variant">{$t('challenge.aiHp')} </span>
 				<span class:text-error={ai.hp <= 25} class="font-bold text-error">{ai.hp}</span>
 			</div>
 			{#if phase === 'prepare'}
@@ -410,7 +415,7 @@ fire()`);
 							class="pixel-btn border-2 border-outline-variant px-3 py-1.5 text-xs text-error hover:bg-error/10"
 							disabled={phase !== 'prepare'}
 						>
-							🗑 CLEAR
+							🗑 {$t('challenge.clear')}
 						</button>
 						<span class="text-xs text-on-surface-variant">Commands loop during battle</span>
 					</div>
@@ -420,7 +425,7 @@ fire()`);
 						class="pixel-btn border-2 border-secondary-fixed bg-secondary-fixed px-8 py-2 font-bold text-on-secondary uppercase disabled:opacity-40"
 					>
 						{#if phase === 'prepare'}
-							✓ ГОТОВО
+							{$t('challenge.ready')}
 						{:else if phase === 'battle'}
 							<span class="inline-block animate-spin">⟳</span>&nbsp;BATTLE...
 						{:else}

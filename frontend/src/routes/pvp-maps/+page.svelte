@@ -1,4 +1,23 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { t } from '$lib/i18n';
+	const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+	let authenticated = $state(false);
+
+	onMount(async () => {
+		try {
+			const response = await fetch(`${API}/auth/me`, { credentials: 'include' });
+			const data = response.ok ? await response.json() : null;
+			authenticated = Boolean(data?.authenticated);
+		} catch {
+			authenticated = false;
+		}
+	});
+
+	function mapHref(mapId: number) {
+		const destination = `/pvp?map=${mapId}`;
+		return authenticated ? destination : `/auth?next=${encodeURIComponent(destination)}`;
+	}
 	const maps = [
 		{
 			id: 1,
@@ -27,21 +46,25 @@
 	];
 </script>
 
-<svelte:head><title>Карты Player vs Player — CodeCommand</title></svelte:head>
+<svelte:head><title>Карты Player vs Player — CODETANK ARENA</title></svelte:head>
 
 <div class="min-h-screen bg-surface text-on-surface">
 	<header class="border-b-4 border-outline-variant bg-surface-container-low">
 		<div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-			<a href="/" class="text-xl font-bold text-primary">← CODECOMMAND</a>
+			<a href="/" class="text-xl font-bold text-primary">{$t('common.backHome')}</a>
 			<span class="text-sm tracking-widest text-error uppercase">Player vs Player</span>
 		</div>
 	</header>
 	<main class="mx-auto max-w-6xl px-6 py-12">
-		<p class="mb-3 text-sm font-bold tracking-widest text-tertiary uppercase">Выбор поля боя</p>
-		<h1 class="mb-4 text-4xl font-bold text-primary uppercase md:text-6xl">Выбери PvP-карту</h1>
-		<p class="mb-10 max-w-3xl text-on-surface-variant">
-			Карта сохраняется в комнате. Оба игрока увидят одинаковые стены и будут сражаться на выбранной
-			арене.
+		<p class="mb-3 text-sm font-bold tracking-widest text-tertiary uppercase">
+			{$t('maps.eyebrow')}
+		</p>
+		<h1 class="mb-4 text-4xl font-bold text-primary uppercase md:text-6xl">
+			{$t('maps.pvpTitle')}
+		</h1>
+		<p class="mb-4 max-w-3xl text-on-surface-variant">{$t('maps.pvpIntro')}</p>
+		<p class="mb-10 border-l-4 border-tertiary pl-4 text-sm font-bold text-tertiary">
+			{$t('maps.pvpAuthRequired')}
 		</p>
 		<div class="grid gap-7 md:grid-cols-3">
 			{#each maps as map}
@@ -63,17 +86,58 @@
 					</div>
 					<div class="mb-3 flex items-center justify-between">
 						<span class="text-3xl font-bold">0{map.id}</span>
-						<span class="border px-2 py-1 text-[10px] font-bold uppercase">{map.difficulty}</span>
+						<span class="border px-2 py-1 text-[10px] font-bold uppercase"
+							>{$t(`maps.items.${map.id}.pvpDifficulty`)}</span
+						>
 					</div>
-					<h2 class="mb-2 text-xl font-bold text-on-surface uppercase">{map.title}</h2>
-					<p class="mb-6 text-sm text-on-surface-variant">{map.description}</p>
+					<h2 class="mb-2 text-xl font-bold text-on-surface uppercase">
+						{$t(`maps.items.${map.id}.title`)}
+					</h2>
+					<p class="mb-6 text-sm text-on-surface-variant">
+						{$t(`maps.items.${map.id}.pvpDescription`)}
+					</p>
 					<a
-						href={`/pvp?map=${map.id}`}
+						href={mapHref(map.id)}
 						class="pixel-btn mt-auto block bg-primary-container px-5 py-3 text-center font-bold text-on-primary-container uppercase"
-						>Создать или войти</a
+						>{$t('maps.enter')}</a
 					>
 				</article>
 			{/each}
 		</div>
 	</main>
+
+	<footer class="mt-14 border-t-4 border-outline-variant bg-surface-container-low">
+		<div
+			class="mx-auto flex max-w-[1280px] flex-col items-center justify-between gap-6 px-5 py-8 md:flex-row lg:px-8"
+		>
+			<a href="/" class="flex items-center gap-3" aria-label="CODETANK ARENA — Home">
+				<span
+					class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border-2 border-outline-variant bg-black"
+				>
+					<img
+						src="/assets/codetank-logo-mark-transparent.png"
+						alt=""
+						class="h-full w-full scale-[1.45] object-cover"
+					/>
+				</span>
+				<span class="font-black text-primary uppercase">CODETANK ARENA</span>
+			</a>
+			<nav class="flex flex-wrap justify-center gap-5 text-xs uppercase" aria-label="Footer">
+				<a href="/" class="text-on-surface-variant hover:text-primary">{$t('common.home')}</a>
+				<a href="/missions" class="text-on-surface-variant hover:text-primary"
+					>{$t('common.missions')}</a
+				>
+				<a href="/challenge-maps" class="text-on-surface-variant hover:text-primary"
+					>{$t('common.challenge')}</a
+				>
+				<a href="/pvp-maps" class="text-primary">{$t('common.pvp')}</a>
+				<a href="/instruction" class="text-on-surface-variant hover:text-primary"
+					>{$t('common.instruction')}</a
+				>
+			</nav>
+			<div class="text-center text-[10px] font-bold text-tertiary uppercase md:text-right">
+				{$t('common.copyright')}
+			</div>
+		</div>
+	</footer>
 </div>

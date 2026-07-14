@@ -1,16 +1,22 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { Application, Assets, Graphics, Sprite } from 'pixi.js';
+	import { t } from '$lib/i18n';
+	import LanguageSwitcher from '$lib/components/LanguageSwitcher.svelte';
+	type MenuUser = { name: string; email: string; picture?: string };
+	const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 	let gameContainer = $state<HTMLDivElement | null>(null);
 	let previewApp: Application | null = null;
 	let backendStatus = $state<'checking' | 'online' | 'offline'>('checking');
+	let mobileMenuOpen = $state(false);
+	let currentUser = $state<MenuUser | null>(null);
 
 	const navLinks = [
-		{ label: 'Missions', href: '/missions' },
-		{ label: 'Challenge VS AI', href: '/challenge-maps' },
-		{ label: 'PvP Rooms', href: '/pvp-maps' },
-		{ label: 'Instruction', href: '/instruction' }
+		{ key: 'common.missions', href: '/missions' },
+		{ key: 'common.challenge', href: '/challenge-maps' },
+		{ key: 'common.pvp', href: '/pvp-maps' },
+		{ key: 'common.instruction', href: '/instruction' }
 	];
 
 	const modes = [
@@ -106,20 +112,114 @@
 			text: 'Противники двигаются, ищут линию огня и разрушают кирпичи.'
 		}
 	];
-	const missionNumbers = Array.from({ length: 9 }, (_, index) => index + 1);
+	const missionPreviews = [
+		{
+			id: 1,
+			goal: '1,2',
+			brick: ['4,1', '4,2', '7,4'],
+			steel: ['4,3', '7,5'],
+			enemies: [{ cell: '8,5', skin: 'red' }]
+		},
+		{
+			id: 2,
+			goal: '5,2',
+			brick: ['3,4', '4,4', '7,3'],
+			steel: ['5,4', '7,2'],
+			enemies: [{ cell: '8,1', skin: 'dark' }]
+		},
+		{
+			id: 3,
+			goal: '8,1',
+			brick: ['4,3', '5,3', '8,4'],
+			steel: ['3,3', '6,3', '8,5'],
+			enemies: [{ cell: '7,5', skin: 'red' }]
+		},
+		{
+			id: 4,
+			goal: '7,1',
+			brick: ['3,2', '4,2', '8,5'],
+			steel: ['5,4', '6,4'],
+			enemies: [{ cell: '7,2', skin: 'red' }]
+		},
+		{
+			id: 5,
+			goal: '8,2',
+			brick: ['4,2', '4,3', '7,4', '8,4'],
+			steel: ['4,4', '6,4'],
+			enemies: [{ cell: '6,2', skin: 'dark' }]
+		},
+		{
+			id: 6,
+			goal: '8,1',
+			brick: ['5,4', '6,4', '6,2'],
+			steel: ['3,2', '3,3', '7,4', '8,4'],
+			enemies: [{ cell: '8,2', skin: 'red' }]
+		},
+		{
+			id: 7,
+			goal: '8,3',
+			brick: ['3,2', '5,1', '5,2', '7,5'],
+			steel: ['3,3', '6,5'],
+			enemies: [
+				{ cell: '8,1', skin: 'red' },
+				{ cell: '8,6', skin: 'green' }
+			]
+		},
+		{
+			id: 8,
+			goal: '8,3',
+			brick: ['3,3', '4,3', '6,3', '6,4'],
+			steel: ['2,3', '6,2', '8,5'],
+			enemies: [
+				{ cell: '7,1', skin: 'dark' },
+				{ cell: '8,6', skin: 'sand' }
+			]
+		},
+		{
+			id: 9,
+			goal: '8,3',
+			brick: ['2,2', '4,2', '5,4', '7,4', '7,6'],
+			steel: ['3,2', '6,4', '4,6'],
+			enemies: [
+				{ cell: '8,1', skin: 'red' },
+				{ cell: '8,6', skin: 'green' },
+				{ cell: '5,1', skin: 'heavy' }
+			]
+		}
+	];
+
+	const enemyPreviewAsset: Record<string, string> = {
+		red: '/assets/kenney-remastered/tank_red.png',
+		dark: '/assets/kenney-remastered/tank_dark.png',
+		green: '/assets/kenney-remastered/tank_green.png',
+		sand: '/assets/kenney-remastered/tank_sand.png',
+		heavy: '/assets/kenney-remastered/tank_bigRed.png'
+	};
 
 	async function checkBackend() {
 		backendStatus = 'checking';
 		try {
-			const response = await fetch('http://localhost:8000/api/missions');
+			const response = await fetch(`${API}/api/missions`);
 			backendStatus = response.ok ? 'online' : 'offline';
 		} catch {
 			backendStatus = 'offline';
 		}
 	}
 
+	async function loadCurrentUser() {
+		try {
+			const response = await fetch(`${API}/auth/me`, { credentials: 'include' });
+			if (!response.ok) return;
+			const data = await response.json();
+			currentUser = data.authenticated ? data.user : null;
+		} catch {
+			currentUser = null;
+		}
+	}
+
 	onMount(async () => {
 		void checkBackend();
+		void loadCurrentUser();
 		if (!gameContainer) return;
 
 		const app = new Application();
@@ -139,12 +239,20 @@
 		grid.stroke();
 		app.stage.addChild(grid);
 
-		const [blueTexture, redTexture, brickTexture, steelTexture, bulletTexture] = await Promise.all([
+		const [
+			blueTexture,
+			redTexture,
+			brickTexture,
+			steelTexture,
+			blueBulletTexture,
+			redBulletTexture
+		] = await Promise.all([
 			Assets.load('/assets/kenney-remastered/tank_blue.png'),
 			Assets.load('/assets/kenney-remastered/tank_red.png'),
 			Assets.load('/assets/kenney/wall-brick.png'),
 			Assets.load('/assets/kenney/wall-steel.png'),
-			Assets.load('/assets/kenney-remastered/bulletBlue2.png')
+			Assets.load('/assets/kenney-remastered/bulletBlue2.png'),
+			Assets.load('/assets/kenney-remastered/bulletRed2.png')
 		]);
 
 		for (const [x, y, type] of [
@@ -181,20 +289,35 @@
 		red.position.set(476, 28);
 		app.stage.addChild(red);
 
-		const bullet = new Sprite(bulletTexture);
-		bullet.anchor.set(0.5);
-		bullet.width = 20;
-		bullet.scale.y = bullet.scale.x;
-		bullet.rotation = Math.PI / 2;
-		bullet.position.set(116, 308);
-		app.stage.addChild(bullet);
+		const blueBullet = new Sprite(blueBulletTexture);
+		blueBullet.anchor.set(0.5);
+		blueBullet.width = 20;
+		blueBullet.scale.y = blueBullet.scale.x;
+		blueBullet.rotation = Math.PI / 2;
+		blueBullet.position.set(116, 308);
+		app.stage.addChild(blueBullet);
 
-		let direction = 1;
+		const redBullet = new Sprite(redBulletTexture);
+		redBullet.anchor.set(0.5);
+		redBullet.width = 20;
+		redBullet.scale.y = redBullet.scale.x;
+		redBullet.rotation = -Math.PI / 2;
+		redBullet.position.set(444, 28);
+		app.stage.addChild(redBullet);
+
+		let blueBulletDirection = 1;
+		let redBulletDirection = -1;
 		app.ticker.add((ticker) => {
-			bullet.x += direction * 2.4 * ticker.deltaTime;
-			if (bullet.x > 360) direction = -1;
-			if (bullet.x < 116) direction = 1;
-			bullet.rotation = direction > 0 ? Math.PI / 2 : -Math.PI / 2;
+			blueBullet.x += blueBulletDirection * 2.4 * ticker.deltaTime;
+			redBullet.x += redBulletDirection * 2.4 * ticker.deltaTime;
+
+			if (blueBullet.x >= 360) blueBulletDirection = -1;
+			if (blueBullet.x <= 116) blueBulletDirection = 1;
+			if (redBullet.x <= 200) redBulletDirection = 1;
+			if (redBullet.x >= 444) redBulletDirection = -1;
+
+			blueBullet.rotation = blueBulletDirection > 0 ? Math.PI / 2 : -Math.PI / 2;
+			redBullet.rotation = redBulletDirection > 0 ? Math.PI / 2 : -Math.PI / 2;
 		});
 	});
 
@@ -205,7 +328,7 @@
 </script>
 
 <svelte:head>
-	<title>CodeCommand — Battle City Code Arena</title>
+	<title>CODETANK ARENA</title>
 	<meta
 		name="description"
 		content="Программируй танк, разрушай стены и сражайся с AI или другими игроками."
@@ -218,46 +341,169 @@
 	<nav
 		class="sticky top-0 z-50 border-b-4 border-outline-variant bg-surface-container-low/95 backdrop-blur"
 	>
-		<div class="mx-auto flex max-w-[1280px] items-center justify-between gap-5 px-5 py-4 lg:px-8">
-			<a href="/" class="flex items-center gap-3">
+		<div
+			class="mx-auto flex max-w-[1280px] items-center justify-between gap-3 px-3 py-3 sm:gap-5 sm:px-5 sm:py-4 lg:px-8"
+		>
+			<a href="/" class="flex items-center gap-3" aria-label="CODETANK ARENA — Home">
 				<span
-					class="pixel-shadow flex h-11 w-11 items-center justify-center border-2 border-primary bg-primary-container text-xl"
-					>▦</span
+					class="pixel-shadow flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border-2 border-outline-variant bg-black sm:h-11 sm:w-11 xl:h-12 xl:w-12"
 				>
-				<span class="text-lg font-black tracking-tight text-primary uppercase sm:text-2xl"
-					>CodeCommand</span
+					<img
+						src="/assets/codetank-logo-mark-transparent.png"
+						alt=""
+						class="h-full w-full scale-[1.45] object-cover"
+					/>
+				</span>
+				<span
+					class="hidden font-black tracking-tight text-primary uppercase sm:inline sm:text-xl xl:text-2xl"
+					>CODETANK ARENA</span
 				>
 			</a>
 
-			<div class="hidden items-center gap-6 lg:flex">
+			<div class="hidden items-center gap-4 lg:flex xl:gap-6">
 				{#each navLinks as link}
 					<a
 						href={link.href}
-						class="text-sm font-bold text-on-surface-variant uppercase hover:text-primary"
-						>{link.label}</a
+						class="text-xs font-bold text-on-surface-variant uppercase hover:text-primary xl:text-sm"
+						>{$t(link.key)}</a
 					>
 				{/each}
 			</div>
 
+			<div class="hidden items-center gap-3 lg:flex">
+				<LanguageSwitcher floating={false} />
+				{#if currentUser}
+					<a
+						href="/profile"
+						class="pixel-shadow flex items-center gap-2 border-2 border-secondary-fixed bg-surface-container px-2 py-1.5 hover:bg-surface-container-high"
+						aria-label={$t('common.profile')}
+					>
+						{#if currentUser.picture}<img
+								src={currentUser.picture}
+								alt=""
+								referrerpolicy="no-referrer"
+								class="h-7 w-7 border border-secondary-fixed object-cover"
+							/>{/if}
+						<span
+							class="hidden max-w-24 truncate text-xs font-black text-secondary-fixed uppercase xl:inline"
+							>{currentUser.name}</span
+						>
+					</a>
+				{:else}
+					<a
+						href="/auth"
+						class="pixel-shadow border-2 border-primary bg-primary px-3 py-2 text-xs font-black text-on-primary uppercase hover:bg-primary-fixed"
+						>{$t('common.signIn')}</a
+					>
+				{/if}
+				<button
+					type="button"
+					onclick={checkBackend}
+					class="hidden items-center gap-2 border-2 border-outline-variant bg-surface px-3 py-2 text-[10px] font-bold uppercase xl:flex"
+				>
+					<span
+						class="h-2.5 w-2.5"
+						class:animate-pulse={backendStatus === 'checking'}
+						class:bg-tertiary={backendStatus === 'checking'}
+						class:bg-primary={backendStatus === 'online'}
+						class:bg-error={backendStatus === 'offline'}
+					></span>
+					{backendStatus === 'online'
+						? 'System online'
+						: backendStatus === 'offline'
+							? 'System offline'
+							: 'Checking'}
+				</button>
+			</div>
+
 			<button
 				type="button"
-				onclick={checkBackend}
-				class="flex items-center gap-2 border-2 border-outline-variant bg-surface px-3 py-2 text-[10px] font-bold uppercase sm:text-xs"
+				class="pixel-shadow flex h-10 w-12 flex-col items-center justify-center gap-1.5 border-2 border-outline-variant bg-surface text-primary lg:hidden"
+				aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+				aria-expanded={mobileMenuOpen}
+				aria-controls="mobile-navigation"
+				onclick={() => (mobileMenuOpen = !mobileMenuOpen)}
 			>
 				<span
-					class="h-2.5 w-2.5"
-					class:animate-pulse={backendStatus === 'checking'}
-					class:bg-tertiary={backendStatus === 'checking'}
-					class:bg-primary={backendStatus === 'online'}
-					class:bg-error={backendStatus === 'offline'}
+					class="h-0.5 w-6 bg-current transition-transform"
+					class:translate-y-2={mobileMenuOpen}
+					class:rotate-45={mobileMenuOpen}
 				></span>
-				{backendStatus === 'online'
-					? 'System online'
-					: backendStatus === 'offline'
-						? 'System offline'
-						: 'Checking'}
+				<span class="h-0.5 w-6 bg-current" class:opacity-0={mobileMenuOpen}></span>
+				<span
+					class="h-0.5 w-6 bg-current transition-transform"
+					class:-translate-y-2={mobileMenuOpen}
+					class:-rotate-45={mobileMenuOpen}
+				></span>
 			</button>
 		</div>
+
+		{#if mobileMenuOpen}
+			<div
+				id="mobile-navigation"
+				class="border-t-2 border-outline-variant bg-surface-container-low px-3 pb-4 sm:px-5 lg:hidden"
+			>
+				<div class="mx-auto flex max-w-[1280px] flex-col">
+					{#each navLinks as link, index}
+						<a
+							href={link.href}
+							class="flex items-center justify-between border-b-2 border-outline-variant px-2 py-4 text-sm font-bold text-on-surface-variant uppercase hover:bg-surface-container hover:text-primary"
+							onclick={() => (mobileMenuOpen = false)}
+						>
+							<span><span class="mr-3 text-secondary-fixed">0{index + 1}</span>{$t(link.key)}</span>
+							<span aria-hidden="true" class="text-primary">→</span>
+						</a>
+					{/each}
+					{#if currentUser}
+						<a
+							href="/profile"
+							class="mt-4 flex items-center gap-3 border-2 border-secondary-fixed bg-surface-container px-4 py-3 text-sm font-black text-secondary-fixed uppercase shadow-[4px_4px_0_#000]"
+							onclick={() => (mobileMenuOpen = false)}
+						>
+							{#if currentUser.picture}<img
+									src={currentUser.picture}
+									alt=""
+									referrerpolicy="no-referrer"
+									class="h-9 w-9 border-2 border-secondary-fixed object-cover"
+								/>{/if}
+							<span class="min-w-0"
+								><span class="block truncate">{currentUser.name}</span><span
+									class="block text-[9px] text-on-surface-variant">{$t('common.profile')}</span
+								></span
+							>
+						</a>
+					{:else}
+						<a
+							href="/auth"
+							class="mt-4 flex items-center justify-center border-2 border-primary bg-primary px-4 py-3 text-sm font-black text-on-primary uppercase shadow-[4px_4px_0_#000]"
+							onclick={() => (mobileMenuOpen = false)}>{$t('common.signIn')}</a
+						>
+					{/if}
+
+					<div class="flex flex-wrap items-center justify-between gap-3 px-2 pt-4">
+						<LanguageSwitcher floating={false} />
+						<button
+							type="button"
+							onclick={checkBackend}
+							class="flex items-center gap-2 border-2 border-outline-variant bg-surface px-3 py-2 text-[10px] font-bold uppercase"
+						>
+							<span
+								class="h-2.5 w-2.5"
+								class:animate-pulse={backendStatus === 'checking'}
+								class:bg-tertiary={backendStatus === 'checking'}
+								class:bg-primary={backendStatus === 'online'}
+								class:bg-error={backendStatus === 'offline'}
+							></span>
+							{backendStatus === 'online'
+								? 'System online'
+								: backendStatus === 'offline'
+									? 'System offline'
+									: 'Checking'}
+						</button>
+					</div>
+				</div>
+			</div>
+		{/if}
 	</nav>
 
 	<main>
@@ -270,27 +516,26 @@
 					<div
 						class="mb-5 inline-flex border-2 border-tertiary bg-surface px-3 py-1 text-xs font-bold tracking-[0.22em] text-tertiary uppercase"
 					>
-						Python strategy tank arena
+						{$t('home.heroEyebrow')}
 					</div>
 					<h1
 						class="mb-6 text-5xl leading-[0.9] font-black tracking-[-0.06em] text-primary uppercase sm:text-7xl xl:text-8xl"
 					>
-						Battle City<br /><span class="text-secondary-fixed">Code Arena</span>
+						CODETANK<br /><span class="text-secondary-fixed">ARENA</span>
 					</h1>
 					<p class="mb-8 max-w-2xl text-base leading-7 text-on-surface-variant sm:text-lg">
-						Не управляй танком вручную. Напиши алгоритм, разверни его на арене и наблюдай, как твой
-						код сражается в реальном времени.
+						{$t('home.heroText')}
 					</p>
 					<div class="flex flex-wrap gap-4">
 						<a
 							href="/missions"
 							class="pixel-btn bg-primary px-7 py-4 text-base font-black text-on-primary uppercase"
-							>▶ Start mission</a
+							>▶ {$t('home.startMission')}</a
 						>
 						<a
 							href="/challenge-maps"
 							class="pixel-btn border-2 border-secondary-fixed bg-surface px-7 py-4 text-base font-black text-secondary-fixed uppercase"
-							>⚔ Challenge AI</a
+							>⚔ {$t('common.challenge')}</a
 						>
 					</div>
 					<div
@@ -346,12 +591,12 @@
 			>
 				<div>
 					<div class="mb-2 text-xs font-bold tracking-[0.25em] text-primary uppercase">
-						Select game cartridge
+						{$t('home.chooseMode')}
 					</div>
-					<h2 class="text-3xl font-black uppercase sm:text-5xl">Choose battle mode</h2>
+					<h2 class="text-3xl font-black uppercase sm:text-5xl">{$t('home.chooseMode')}</h2>
 				</div>
 				<p class="max-w-md text-sm leading-6 text-on-surface-variant">
-					Три режима — от обучения основам до соревнования пользовательских алгоритмов.
+					{$t('home.chooseModeText')}
 				</p>
 			</div>
 
@@ -363,15 +608,19 @@
 						<div class="mb-8 flex items-start justify-between">
 							<span class="text-5xl font-black {mode.color}">{mode.index}</span>
 							<span class="border-2 px-3 py-1 text-[10px] font-bold {mode.border} {mode.color}"
-								>{mode.tag}</span
+								>{$t(`home.modes.${mode.index}.tag`)}</span
 							>
 						</div>
-						<h3 class="mb-4 text-2xl font-black uppercase">{mode.title}</h3>
-						<p class="mb-8 text-sm leading-6 text-on-surface-variant">{mode.description}</p>
+						<h3 class="mb-4 text-2xl font-black uppercase">
+							{$t(`home.modes.${mode.index}.title`)}
+						</h3>
+						<p class="mb-8 text-sm leading-6 text-on-surface-variant">
+							{$t(`home.modes.${mode.index}.description`)}
+						</p>
 						<a
 							href={mode.href}
 							class="pixel-btn mt-auto block px-5 py-3 text-center text-sm font-black uppercase {mode.button}"
-							>Insert cartridge →</a
+							>{$t('home.insertCartridge')}</a
 						>
 					</article>
 				{/each}
@@ -382,9 +631,9 @@
 			<div class="mx-auto max-w-[1280px] px-5 py-20 lg:px-8">
 				<div class="mb-12 text-center">
 					<div class="mb-2 text-xs font-bold tracking-[0.25em] text-secondary-fixed uppercase">
-						Mission protocol
+						{$t('home.protocolLabel')}
 					</div>
-					<h2 class="text-3xl font-black uppercase sm:text-5xl">From code to victory</h2>
+					<h2 class="text-3xl font-black uppercase sm:text-5xl">{$t('home.protocolTitle')}</h2>
 				</div>
 				<div class="grid gap-4 md:grid-cols-4">
 					{#each steps as step, index}
@@ -397,8 +646,12 @@
 									class="text-xs text-outline">STEP {step.number}</span
 								>
 							</div>
-							<h3 class="mb-3 text-xl font-black text-secondary-fixed">{step.title}</h3>
-							<p class="text-xs leading-5 text-on-surface-variant">{step.text}</p>
+							<h3 class="mb-3 text-xl font-black text-secondary-fixed">
+								{$t(`home.steps.${step.number}.title`)}
+							</h3>
+							<p class="text-xs leading-5 text-on-surface-variant">
+								{$t(`home.steps.${step.number}.text`)}
+							</p>
 						</div>
 					{/each}
 				</div>
@@ -439,12 +692,10 @@
 
 			<div class="flex flex-col justify-center">
 				<div class="mb-2 text-xs font-bold tracking-[0.25em] text-tertiary uppercase">
-					Command interface
+					{$t('home.interfaceLabel')}
 				</div>
-				<h2 class="mb-5 text-3xl font-black uppercase sm:text-5xl">Program the tank</h2>
-				<p class="mb-7 leading-7 text-on-surface-variant">
-					Используй небольшой и понятный набор команд, а затем объединяй их условиями и циклами.
-				</p>
+				<h2 class="mb-5 text-3xl font-black uppercase sm:text-5xl">{$t('home.interfaceTitle')}</h2>
+				<p class="mb-7 leading-7 text-on-surface-variant">{$t('home.interfaceText')}</p>
 				<div class="grid grid-cols-2 gap-3 text-xs">
 					{#each [['↑', 'move()', 'вперёд'], ['↻', "rotate('RIGHT')", 'направо'], ['◎', 'scan()', 'обнаружить'], ['⊕', 'fire()', 'выстрел']] as command}
 						<div class="border-2 border-outline-variant bg-surface-container-low p-3">
@@ -458,7 +709,7 @@
 				<a
 					href="/instruction"
 					class="mt-7 text-sm font-bold text-primary underline underline-offset-4"
-					>Открыть полную инструкцию →</a
+					>{$t('home.fullInstruction')}</a
 				>
 			</div>
 		</section>
@@ -467,19 +718,23 @@
 			<div class="mx-auto max-w-[1280px] px-5 py-20 lg:px-8">
 				<div class="mb-10 max-w-3xl">
 					<div class="mb-2 text-xs font-bold tracking-[0.25em] text-error uppercase">
-						Arena systems
+						{$t('home.mechanicsLabel')}
 					</div>
-					<h2 class="mb-4 text-3xl font-black uppercase sm:text-5xl">Battle mechanics</h2>
-					<p class="leading-7 text-on-surface-variant">
-						Каждая механика видна на поле и влияет на результат программы.
-					</p>
+					<h2 class="mb-4 text-3xl font-black uppercase sm:text-5xl">
+						{$t('home.mechanicsTitle')}
+					</h2>
+					<p class="leading-7 text-on-surface-variant">{$t('home.mechanicsText')}</p>
 				</div>
 				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-					{#each mechanics as mechanic}
+					{#each mechanics as mechanic, index}
 						<div class="border-2 border-outline-variant bg-surface p-5 hover:border-primary">
 							<div class="mb-4 text-3xl text-primary">{mechanic.icon}</div>
-							<h3 class="mb-2 font-black text-secondary-fixed">{mechanic.title}</h3>
-							<p class="text-xs leading-5 text-on-surface-variant">{mechanic.text}</p>
+							<h3 class="mb-2 font-black text-secondary-fixed">
+								{$t(`home.mechanics.${index}.title`)}
+							</h3>
+							<p class="text-xs leading-5 text-on-surface-variant">
+								{$t(`home.mechanics.${index}.text`)}
+							</p>
 						</div>
 					{/each}
 				</div>
@@ -490,32 +745,75 @@
 			<div class="grid items-center gap-10 lg:grid-cols-2">
 				<div>
 					<div class="mb-2 text-xs font-bold tracking-[0.25em] text-primary uppercase">
-						Campaign progression
+						{$t('home.campaignLabel')}
 					</div>
 					<h2 class="mb-5 text-3xl font-black uppercase sm:text-5xl">
-						Nine missions.<br />One commander.
+						{$t('home.campaignTitle')}
 					</h2>
-					<p class="mb-7 leading-7 text-on-surface-variant">
-						Начни с маршрута из точки A в B. Научись поворачивать, использовать циклы, сканировать
-						поле и вести бой против нескольких врагов.
-					</p>
+					<p class="mb-7 leading-7 text-on-surface-variant">{$t('home.campaignText')}</p>
 					<a
 						href="/missions"
 						class="pixel-btn inline-block bg-tertiary px-7 py-4 font-black text-on-tertiary uppercase"
-						>View campaign</a
+						>{$t('home.viewCampaign')}</a
 					>
 				</div>
 				<div class="grid grid-cols-3 gap-3">
-					{#each missionNumbers as missionNumber}
+					{#each missionPreviews as mission}
 						<a
-							href={`/game?mission=${missionNumber}`}
-							class="group flex aspect-square flex-col items-center justify-center border-4 border-outline-variant bg-surface-container-low hover:border-primary"
-							><span class="text-2xl font-black text-primary"
-								>{String(missionNumber).padStart(2, '0')}</span
-							><span class="mt-2 text-[9px] text-outline group-hover:text-on-surface-variant"
-								>{missionNumber <= 3 ? 'MOVE' : missionNumber <= 6 ? 'COMBAT' : 'SIEGE'}</span
-							></a
+							href={`/game?mission=${mission.id}`}
+							aria-label={`Открыть миссию ${mission.id}`}
+							class="group overflow-hidden border-4 border-outline-variant bg-surface-container-low hover:border-primary"
 						>
+							<div
+								class="grid aspect-[10/8] grid-cols-10 overflow-hidden border-b-2 border-outline-variant bg-[#090c12]"
+							>
+								{#each Array(80).keys() as index}
+									{@const cell = `${index % 10},${Math.floor(index / 10)}`}
+									{@const enemy = mission.enemies.find((item) => item.cell === cell)}
+									<div class="relative min-w-0 border border-[#242838]/70">
+										{#if mission.brick.includes(cell)}
+											<img
+												src="/assets/kenney/wall-brick.png"
+												alt=""
+												class="absolute inset-0 h-full w-full object-contain p-px"
+											/>
+										{:else if mission.steel.includes(cell)}
+											<img
+												src="/assets/kenney/wall-steel.png"
+												alt=""
+												class="absolute inset-0 h-full w-full object-contain p-px"
+											/>
+										{:else if cell === '1,6'}
+											<img
+												src="/assets/kenney-remastered/tank_blue.png"
+												alt="Танк игрока"
+												class="absolute inset-0 h-full w-full rotate-180 object-contain p-px"
+											/>
+										{:else if enemy}
+											<img
+												src={enemyPreviewAsset[enemy.skin]}
+												alt="Танк противника"
+												class="absolute inset-0 h-full w-full rotate-180 object-contain p-px"
+											/>
+										{:else if cell === mission.goal}
+											<div
+												class="absolute inset-[2px] flex items-center justify-center border border-primary bg-primary/15 text-[6px] font-black text-primary sm:text-[8px]"
+											>
+												B
+											</div>
+										{/if}
+									</div>
+								{/each}
+							</div>
+							<div class="flex items-center justify-between px-3 py-2">
+								<span class="text-lg font-black text-primary"
+									>{String(mission.id).padStart(2, '0')}</span
+								>
+								<span class="text-[8px] text-outline group-hover:text-on-surface-variant"
+									>{mission.id <= 3 ? 'MOVE' : mission.id <= 6 ? 'COMBAT' : 'SIEGE'}</span
+								>
+							</div>
+						</a>
 					{/each}
 				</div>
 			</div>
@@ -529,20 +827,21 @@
 					<div
 						class="mb-2 text-xs font-bold tracking-[0.25em] text-on-primary-container/70 uppercase"
 					>
-						Ready for deployment?
+						{$t('home.ready')}
 					</div>
 					<h2 class="text-3xl font-black text-on-primary-container uppercase sm:text-5xl">
-						Your code. Your tank. Your victory.
+						{$t('home.victory')}
 					</h2>
 				</div>
 				<div class="flex flex-wrap justify-center gap-4">
 					<a
 						href="/missions"
-						class="pixel-btn bg-surface px-7 py-4 font-black text-primary uppercase">Start coding</a
+						class="pixel-btn bg-surface px-7 py-4 font-black text-primary uppercase"
+						>{$t('home.startCoding')}</a
 					><a
 						href="/pvp-maps"
 						class="pixel-btn border-2 border-surface bg-transparent px-7 py-4 font-black text-on-primary-container uppercase"
-						>Create PvP room</a
+						>{$t('home.createPvp')}</a
 					>
 				</div>
 			</div>
@@ -553,25 +852,32 @@
 		<div
 			class="mx-auto flex max-w-[1280px] flex-col items-center justify-between gap-6 px-5 py-8 md:flex-row lg:px-8"
 		>
-			<div class="flex items-center gap-3">
+			<a href="/" class="flex items-center gap-3" aria-label="CODETANK ARENA — Home">
 				<span
-					class="flex h-8 w-8 items-center justify-center border-2 border-primary bg-primary-container text-primary"
-					>▦</span
-				><span class="font-black text-primary uppercase">CodeCommand</span>
-			</div>
+					class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border-2 border-outline-variant bg-black"
+				>
+					<img
+						src="/assets/codetank-logo-mark-transparent.png"
+						alt=""
+						class="h-full w-full scale-[1.45] object-cover"
+					/>
+				</span>
+				<span class="font-black text-primary uppercase">CODETANK ARENA</span>
+			</a>
 			<div class="flex flex-wrap justify-center gap-5 text-xs uppercase">
-				<a href="/" class="text-primary">Home</a><a
+				<a href="/" class="text-primary">{$t('common.home')}</a><a
 					href="/missions"
-					class="text-on-surface-variant hover:text-primary">Missions</a
+					class="text-on-surface-variant hover:text-primary">{$t('common.missions')}</a
 				><a href="/challenge-maps" class="text-on-surface-variant hover:text-primary"
-					>Challenge VS AI</a
-				><a href="/pvp-maps" class="text-on-surface-variant hover:text-primary">PvP Rooms</a><a
-					href="/instruction"
-					class="text-on-surface-variant hover:text-primary">Instruction</a
+					>{$t('common.challenge')}</a
+				><a href="/pvp-maps" class="text-on-surface-variant hover:text-primary"
+					>{$t('common.pvp')}</a
+				><a href="/instruction" class="text-on-surface-variant hover:text-primary"
+					>{$t('common.instruction')}</a
 				>
 			</div>
 			<div class="text-center text-[10px] font-bold text-tertiary uppercase md:text-right">
-				© 2026 CodeCommand Industries.<br />All bytes reserved.
+				{$t('common.copyright')}
 			</div>
 		</div>
 	</footer>
