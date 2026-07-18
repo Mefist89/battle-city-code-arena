@@ -1,25 +1,37 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { Application, Assets, Sprite, Container, Graphics } from 'pixi.js';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { CombatEffects, type ImpactKind } from '$lib/game/combatEffects';
 
 	type Tank = { x: number; y: number; direction: 'UP' | 'RIGHT' | 'DOWN' | 'LEFT'; hp: number };
 	type Room = {
 		code: string;
 		players: Record<string, string>;
 		tanks: Record<string, Tank>;
-		walls: Array<{ x: number; y: number }>;
+		walls: Array<{ x: number; y: number; type: 'brick' | 'steel' }>;
 		winner: string | null;
 		ready: string[];
 		phase: 'prepare' | 'battle' | 'finished';
 		seconds_left: number;
 	};
+	type Shot = {
+		slot: '1' | '2';
+		direction: Tank['direction'];
+		path: Array<{ x: number; y: number }>;
+		collision?: boolean;
+		hit?: '1' | '2';
+		wall?: { x: number; y: number; type: 'brick' | 'steel'; destroyed: boolean };
+	};
 
 	let {
 		room,
-		shotPath
+		shots,
+		animationSpeed = 1
 	}: {
 		room: Room | null;
-		shotPath: Array<{ x: number; y: number }>;
+		shots: Shot[];
+		animationSpeed?: number;
 	} = $props();
 
 	let gameDiv: HTMLDivElement | null = $state(null);
@@ -31,12 +43,6 @@
 		DOWN: 0,
 		LEFT: Math.PI / 2
 	};
-	const BULLET_ROTATION: Record<string, number> = {
-		UP: 0,
-		RIGHT: Math.PI / 2,
-		DOWN: Math.PI,
-		LEFT: -Math.PI / 2
-	};
 	const TILE = 64;
 	const MAP_W = 10;
 	const MAP_H = 8;
@@ -44,13 +50,17 @@
 	let tank1Sprite: Sprite | null = null;
 	let tank2Sprite: Sprite | null = null;
 	let wallsContainer: Container | null = null;
-	let pathGraphics: Graphics | null = null;
-	let bulletsContainer: Container | null = null;
+	const wallSprites = new SvelteMap<string, Sprite>();
+	let combatEffects: CombatEffects | null = null;
 	let blueBulletTexture: import('pixi.js').Texture | null = null;
 	let redBulletTexture: import('pixi.js').Texture | null = null;
 	let brickTexture: import('pixi.js').Texture | null = null;
 	let steelTexture: import('pixi.js').Texture | null = null;
 	let sceneReady = $state(false);
+	let disposed = false;
+	let previousHp1 = 100;
+	let previousHp2 = 100;
+	let animatedShots: Shot[] | null = null;
 
 	function setSpritePos(sprite: Sprite, x: number, y: number) {
 		sprite.x = x * TILE + TILE / 2;
@@ -64,13 +74,17 @@
 	onMount(async () => {
 		if (gameDiv) {
 			const app = new Application();
-			pixiApp = app;
 			await app.init({
 				width: MAP_W * TILE,
 				height: MAP_H * TILE,
 				backgroundColor: 0x0a1118,
 				antialias: false
 			});
+			if (disposed) {
+				app.destroy(true, { children: true, texture: false });
+				return;
+			}
+			pixiApp = app;
 			gameDiv.appendChild(app.canvas);
 
 			// Draw grid
@@ -106,6 +120,7 @@
 					Assets.load('/assets/kenney/wall-brick.png'),
 					Assets.load('/assets/kenney/wall-steel.png')
 				]);
+			if (disposed) return;
 			blueBulletTexture = blueBullet;
 			redBulletTexture = redBullet;
 			brickTexture = loadedBrick;
@@ -129,11 +144,9 @@
 
 			wallsContainer = new Container();
 			app.stage.addChild(wallsContainer);
-
-			pathGraphics = new Graphics();
-			app.stage.addChild(pathGraphics);
-			bulletsContainer = new Container();
-			app.stage.addChild(bulletsContainer);
+			combatEffects = new CombatEffects(app, TILE, () => animationSpeed);
+			previousHp1 = room?.tanks['1']?.hp ?? 100;
+			previousHp2 = room?.tanks['2']?.hp ?? 100;
 			sceneReady = true;
 		}
 	});
@@ -143,7 +156,7 @@
 		if (room && tank1Sprite && tank2Sprite && wallsContainer) {
 			const t1 = room.tanks['1'];
 			if (t1) {
-				tank1Sprite.visible = t1.hp > 0;
+				if (t1.hp > 0) tank1Sprite.visible = true;
 				setSpritePos(tank1Sprite, t1.x, t1.y);
 				updateTankTexture(tank1Sprite, t1.direction);
 			} else {
@@ -152,59 +165,80 @@
 
 			const t2 = room.tanks['2'];
 			if (t2) {
-				tank2Sprite.visible = t2.hp > 0;
+				if (t2.hp > 0) tank2Sprite.visible = true;
 				setSpritePos(tank2Sprite, t2.x, t2.y);
 				updateTankTexture(tank2Sprite, t2.direction);
 			} else {
 				tank2Sprite.visible = false;
 			}
 
-			wallsContainer.removeChildren().forEach((child) => child.destroy());
 			if (room.walls && brickTexture && steelTexture) {
+				const activeWalls = new SvelteSet(room.walls.map((wall) => `${wall.x},${wall.y}`));
+				for (const [wallKey, sprite] of wallSprites) {
+					if (!activeWalls.has(wallKey)) {
+						combatEffects?.destroyWall(sprite);
+						wallSprites.delete(wallKey);
+					}
+				}
 				for (const wall of room.walls) {
-					const alternating = (wall.x + wall.y) % 3 === 0;
-					const sprite = new Sprite(alternating ? steelTexture : brickTexture);
+					const wallKey = `${wall.x},${wall.y}`;
+					if (wallSprites.has(wallKey)) continue;
+					const sprite = new Sprite(wall.type === 'steel' ? steelTexture : brickTexture);
 					sprite.anchor.set(0.5);
 					sprite.width = TILE - 6;
 					sprite.height = TILE - 6;
 					setSpritePos(sprite, wall.x, wall.y);
 					wallsContainer.addChild(sprite);
+					wallSprites.set(wallKey, sprite);
 				}
 			}
+
+			if (t1.hp < previousHp1) {
+				if (t1.hp <= 0) combatEffects?.explodeTank(tank1Sprite);
+				else combatEffects?.flashTank(tank1Sprite);
+			}
+			if (t2.hp < previousHp2) {
+				if (t2.hp <= 0) combatEffects?.explodeTank(tank2Sprite);
+				else combatEffects?.flashTank(tank2Sprite);
+			}
+			previousHp1 = t1.hp;
+			previousHp2 = t2.hp;
 		}
 
-		if (pathGraphics && bulletsContainer) {
-			pathGraphics.clear();
-			bulletsContainer.removeChildren().forEach((child) => child.destroy());
-			if (shotPath && shotPath.length > 0) {
-				const first = shotPath[0];
-				const tank1 = room?.tanks['1'];
-				const tank2 = room?.tanks['2'];
-				const fromPlayerOne =
-					!tank2 ||
-					(!!tank1 &&
-						Math.abs(first.x - tank1.x) + Math.abs(first.y - tank1.y) <=
-							Math.abs(first.x - tank2.x) + Math.abs(first.y - tank2.y));
-				const texture = fromPlayerOne ? blueBulletTexture : redBulletTexture;
-				const next = shotPath[1] ?? first;
-				const direction =
-					next.x > first.x ? 'RIGHT' : next.x < first.x ? 'LEFT' : next.y > first.y ? 'DOWN' : 'UP';
-				for (let i = 0; i < shotPath.length; i++) {
-					const p = shotPath[i];
-					if (!texture) continue;
-					const bullet = new Sprite(texture);
-					bullet.anchor.set(0.5);
-					bullet.width = 20;
-					bullet.scale.y = bullet.scale.x;
-					bullet.rotation = BULLET_ROTATION[direction];
-					setSpritePos(bullet, p.x, p.y);
-					bulletsContainer.addChild(bullet);
-				}
+		if (shots?.length && shots !== animatedShots && room && combatEffects) {
+			animatedShots = shots;
+			for (const shot of shots) {
+				const texture = shot.slot === '1' ? blueBulletTexture : redBulletTexture;
+				const shooter = room.tanks[shot.slot];
+				if (!texture || !shooter) continue;
+				const impact: ImpactKind = shot.collision
+					? shot.slot === '1'
+						? 'collision'
+						: 'none'
+					: shot.hit
+						? 'tank'
+						: shot.wall?.type === 'steel'
+							? 'steel'
+							: shot.wall
+								? 'wall'
+								: 'none';
+				void combatEffects.animateProjectile({
+					texture,
+					start: { x: shooter.x, y: shooter.y },
+					path: shot.path,
+					direction: shot.direction,
+					impact
+				});
 			}
 		}
 	});
 
 	onDestroy(() => {
+		disposed = true;
+		sceneReady = false;
+		combatEffects?.destroy();
+		combatEffects = null;
+		wallSprites.clear();
 		if (pixiApp) {
 			pixiApp.destroy(true, { children: true, texture: false });
 		}

@@ -6,8 +6,12 @@ from app.schemas.game import (
     Command, CommandResult, EnemyState, TankState, WallState,
     ROTATE_CW, MOVE_DELTA,
 )
-from app.levels.missions import MISSION_WALLS, MISSION_ENEMIES
+from app.levels.missions import FULL_MISSIONS, MISSION_WALLS, MISSION_ENEMIES
 from app.simulator.mechanics import ray_cells, direction_between, clear_shot
+
+
+class MissionProgressClaimError(ValueError):
+    """Raised when a game session cannot prove a mission completion."""
 
 
 class MissionState:
@@ -18,6 +22,9 @@ class MissionState:
         self.enemies = [EnemyState(x=8, y=5)]
         self.walls: dict[tuple[int, int], str] = dict(MISSION_WALLS[1])
         self.active_mission: int = 1
+        self.mission_completed = False
+        self.completion_score = 0
+        self.progress_claimed = False
 
     def reset(self, mission_id: int) -> TankState:
         """Reset the game state for a given mission."""
@@ -25,11 +32,70 @@ class MissionState:
         self.tank = TankState()
         self.enemies = [EnemyState(x=x, y=y, hp=hp) for x, y, hp in MISSION_ENEMIES[mission_id]]
         self.walls = dict(MISSION_WALLS[mission_id])
+        self.mission_completed = False
+        self.completion_score = 0
+        self.progress_claimed = False
         return self.tank
 
     @property
     def enemy(self) -> EnemyState:
         return next((enemy for enemy in self.enemies if enemy.alive), self.enemies[0])
+
+    def record_completion_if_reached(self) -> None:
+        """Remember a verified objective completion in this server session."""
+        if self.mission_completed:
+            return
+        mission = FULL_MISSIONS[self.active_mission]
+        goal = mission["goal"]
+        reached_goal = self.tank.x == goal["x"] and self.tank.y == goal["y"]
+        defeated_enemies = not mission["combat"] or not any(
+            enemy.alive for enemy in self.enemies
+        )
+        if reached_goal and defeated_enemies:
+            self.mission_completed = True
+            self.completion_score = self.tank.score
+
+
+def claim_verified_completion(state: MissionState, mission_id: int) -> int:
+    """Claim a server-recorded mission result once and return its trusted score."""
+    if state.active_mission != mission_id:
+        raise MissionProgressClaimError("Mission does not match the game session")
+    if not state.mission_completed:
+        raise MissionProgressClaimError("Mission is not completed on the server")
+    if state.progress_claimed:
+        raise MissionProgressClaimError("Mission result was already saved")
+
+    state.progress_claimed = True
+    return state.completion_score
+
+
+def enemy_has_opposing_shot(state: MissionState, enemy: EnemyState) -> bool:
+    """Return whether the enemy is already firing directly at the player.
+
+    A clear line of sight alone is not enough for a projectile collision: the
+    enemy must be facing the player at the start of the turn and no living
+    teammate may be standing between both tanks.
+    """
+    tank = state.tank
+    walls = state.walls
+    if not enemy.alive or (enemy.x != tank.x and enemy.y != tank.y):
+        return False
+
+    shot_direction = direction_between(enemy.x, enemy.y, tank.x, tank.y)
+    if enemy.direction != shot_direction or not clear_shot(
+        enemy.x, enemy.y, tank.x, tank.y, walls
+    ):
+        return False
+
+    for cell in ray_cells(enemy.x, enemy.y, shot_direction):
+        if cell == (tank.x, tank.y):
+            return True
+        if any(
+            other.alive and other is not enemy and cell == (other.x, other.y)
+            for other in state.enemies
+        ):
+            return False
+    return False
 
 
 def enemy_single_turn(state: MissionState, enemy: EnemyState, events: list[str]) -> str:
@@ -197,21 +263,10 @@ def execute_command(state: MissionState, cmd: Command) -> CommandResult:
                 break
             target_enemy = next((e for e in state.enemies if e.alive and cell == (e.x, e.y)), None)
             if target_enemy:
-                # Opposing shots meet between tanks and cancel each other.
-                return_direction = direction_between(target_enemy.x, target_enemy.y, tank.x, tank.y)
-                teammate_in_return_path = any(
-                    other.alive
-                    and other is not target_enemy
-                    and (other.x, other.y) in ray_cells(target_enemy.x, target_enemy.y, return_direction)
-                    for other in state.enemies
-                )
-                if (
-                    clear_shot(target_enemy.x, target_enemy.y, tank.x, tank.y, walls)
-                    and not teammate_in_return_path
-                ):
-                    target_enemy.direction = direction_between(
-                        target_enemy.x, target_enemy.y, tank.x, tank.y
-                    )
+                # Cancel damage only for a real opposing shot. A tank that is
+                # facing elsewhere has not launched a projectile towards the
+                # player, even when both tanks have a clear line of sight.
+                if enemy_has_opposing_shot(state, target_enemy):
                     state.cancelled_enemy_shots.add(id(target_enemy))
                     events.append("Bullets collided: no damage")
                     hit = "bullet collision"
@@ -234,6 +289,7 @@ def execute_command(state: MissionState, cmd: Command) -> CommandResult:
         ok = False
 
     action = enemy_turn(state, events)
+    state.record_completion_if_reached()
     return CommandResult(
         ok=ok,
         command=cmd.name,

@@ -4,6 +4,15 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: battle-city-backend
+    # Compose reads secrets at container startup; backend/.env is never copied
+    # into the image and remains excluded from Git.
+    env_file:
+      - ./backend/.env
+    environment:
+      # Docker serves the frontend on port 3000. These non-secret values may
+      # be overridden for deployment without changing backend/.env.
+      FRONTEND_URL: ${DOCKER_FRONTEND_URL:-http://localhost:3000}
+      CORS_ORIGINS: ${DOCKER_CORS_ORIGINS:-http://localhost:3000}
     ports:
       - "8000:8000"
     volumes:
@@ -20,7 +29,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: http://localhost:8000
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
     container_name: battle-city-frontend
     ports:
       - "3000:3000"
@@ -30,7 +39,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - ORIGIN=http://localhost:3000
+      - ORIGIN=${DOCKER_FRONTEND_URL:-http://localhost:3000}
 
 volumes:
   backend-data:

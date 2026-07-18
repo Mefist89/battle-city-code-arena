@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { Application, Assets, Sprite, Texture, Graphics, Text, TextStyle } from 'pixi.js';
+	import { CombatEffects, type ImpactKind } from '$lib/game/combatEffects';
 	import type { Direction, EnemyState, WallState, TankState } from '../types';
 	type MissionData = {
 		goal: { x: number; y: number };
@@ -12,10 +13,12 @@
 
 	let {
 		mission,
-		initialTankState
+		initialTankState,
+		animationSpeed = 1
 	}: {
 		mission: MissionData;
 		initialTankState: TankState;
+		animationSpeed?: number;
 	} = $props();
 
 	let gameDiv: HTMLDivElement | null = $state(null);
@@ -32,19 +35,30 @@
 	const wallSprites = new SvelteMap<string, Sprite>();
 	let brickTexture: Texture | null = null;
 	let steelTexture: Texture | null = null;
-	type ActiveBullet = { sprite: Sprite; cancelled: boolean };
-	const activeBullets: ActiveBullet[] = [];
+	let combatEffects: CombatEffects | null = null;
+	let disposed = false;
+	type ActiveMotion = { frame: number | null; finish: () => void };
+	const activeMotions = new SvelteSet<ActiveMotion>();
+
+	function cancelMotions() {
+		for (const motion of [...activeMotions]) motion.finish();
+		activeMotions.clear();
+	}
 
 	onMount(async () => {
 		if (gameDiv) {
 			const app = new Application();
-			pixiApp = app;
 			await app.init({
 				width: MAP_W * TILE,
 				height: MAP_H * TILE,
 				backgroundColor: 0x0a1118,
 				antialias: false
 			});
+			if (disposed) {
+				app.destroy(true, { children: true });
+				return;
+			}
+			pixiApp = app;
 			gameDiv.appendChild(app.canvas);
 
 			const cells = new Graphics();
@@ -95,6 +109,7 @@
 				Assets.load('/assets/kenney/wall-brick.png'),
 				Assets.load('/assets/kenney/wall-steel.png')
 			]);
+			if (disposed) return;
 			brickTexture = loadedBrickTexture;
 			steelTexture = loadedSteelTexture;
 
@@ -129,6 +144,7 @@
 			}
 
 			const base = await Assets.load(SPRITE_URL);
+			if (disposed) return;
 			const sprite = new Sprite(base);
 			sprite.anchor.set(0.5);
 			sprite.width = TILE - 2;
@@ -148,6 +164,7 @@
 			const enemyTexture = await Assets.load(
 				`/assets/kenney-remastered/${enemySkin[mission.enemy.skin ?? 'red'] ?? 'tank_red.png'}`
 			);
+			if (disposed) return;
 			enemySprite = new Sprite(enemyTexture);
 			enemySprites = [enemySprite];
 			enemySprite.anchor.set(0.5);
@@ -161,6 +178,7 @@
 				const texture = await Assets.load(
 					`/assets/kenney-remastered/${enemySkin[extra.skin ?? 'red'] ?? 'tank_red.png'}`
 				);
+				if (disposed) return;
 				const sprite = new Sprite(texture);
 				sprite.anchor.set(0.5);
 				sprite.width = TILE - 8;
@@ -170,10 +188,15 @@
 				app.stage.addChild(sprite);
 				enemySprites.push(sprite);
 			}
+			combatEffects = new CombatEffects(app, TILE, () => animationSpeed);
 		}
 	});
 
 	onDestroy(() => {
+		disposed = true;
+		cancelMotions();
+		combatEffects?.destroy();
+		combatEffects = null;
 		pixiApp?.destroy(true, { children: true });
 		pixiApp = null;
 		tankSprite = null;
@@ -188,67 +211,13 @@
 		s.y = y * TILE + TILE / 2;
 	}
 
-	function flashSpriteHit(sprite: Sprite) {
-		sprite.tint = 0xff3030;
-		setTimeout(() => {
-			if (!sprite.destroyed) sprite.tint = 0xffffff;
-		}, 140);
-	}
-
-	function setEnemyDir(dir: Direction) {
-		if (!enemySprite) return;
-		enemySprite.rotation = {
-			UP: Math.PI,
-			RIGHT: -Math.PI / 2,
-			DOWN: 0,
-			LEFT: Math.PI / 2
-		}[dir];
-	}
-
 	async function internalAnimateFire(
 		tank: Sprite,
 		dir: Direction,
 		bulletUrl = '/assets/kenney-remastered/bulletBlue2.png'
 	) {
-		if (!pixiApp) return;
+		if (!combatEffects) return;
 		const bulletTexture = await Assets.load(bulletUrl);
-		const bullet = new Sprite(bulletTexture);
-		const projectile: ActiveBullet = { sprite: bullet, cancelled: false };
-		activeBullets.push(projectile);
-		bullet.anchor.set(0.5);
-		bullet.width = Math.floor(TILE * 0.34);
-		bullet.scale.y = bullet.scale.x;
-		bullet.rotation = {
-			UP: 0,
-			RIGHT: Math.PI / 2,
-			DOWN: Math.PI,
-			LEFT: -Math.PI / 2
-		}[dir];
-		bullet.x = tank.x;
-		bullet.y = tank.y;
-		pixiApp.stage.addChild(bullet);
-
-		let targetX = bullet.x;
-		let targetY = bullet.y;
-		let dist = 0;
-		if (dir === 'UP') {
-			targetY = -TILE;
-			dist = bullet.y + TILE;
-		}
-		if (dir === 'DOWN') {
-			targetY = MAP_H * TILE + TILE;
-			dist = targetY - bullet.y;
-		}
-		if (dir === 'LEFT') {
-			targetX = -TILE;
-			dist = bullet.x + TILE;
-		}
-		if (dir === 'RIGHT') {
-			targetX = MAP_W * TILE + TILE;
-			dist = targetX - bullet.x;
-		}
-
-		// Stop the visual projectile at the first wall, matching Challenge VS AI.
 		const tankGridX = Math.round((tank.x - TILE / 2) / TILE);
 		const tankGridY = Math.round((tank.y - TILE / 2) / TILE);
 		const [dx, dy] = {
@@ -257,17 +226,14 @@
 			DOWN: [0, 1],
 			LEFT: [-1, 0]
 		}[dir];
-		let hitWall = false;
-		const trailCells: Array<{ x: number; y: number }> = [];
+		let impact: ImpactKind = 'none';
+		const path: Array<{ x: number; y: number }> = [];
 		let cellX = tankGridX + dx;
 		let cellY = tankGridY + dy;
 		while (cellX >= 0 && cellX < MAP_W && cellY >= 0 && cellY < MAP_H) {
-			trailCells.push({ x: cellX, y: cellY });
+			path.push({ x: cellX, y: cellY });
 			if (wallSprites.has(`${cellX},${cellY}`)) {
-				targetX = cellX * TILE + TILE / 2;
-				targetY = cellY * TILE + TILE / 2;
-				dist = Math.abs(targetX - bullet.x) + Math.abs(targetY - bullet.y);
-				hitWall = true;
+				impact = 'wall';
 				break;
 			}
 			const hitTank = [tankSprite, ...enemySprites].some((sprite) => {
@@ -277,88 +243,18 @@
 				return spriteX === cellX && spriteY === cellY;
 			});
 			if (hitTank) {
-				targetX = cellX * TILE + TILE / 2;
-				targetY = cellY * TILE + TILE / 2;
-				dist = Math.abs(targetX - bullet.x) + Math.abs(targetY - bullet.y);
-				hitWall = true;
+				impact = 'tank';
 				break;
 			}
 			cellX += dx;
 			cellY += dy;
 		}
-
-		const shotTrail = new Graphics();
-		const trailColor = bulletUrl.includes('Red') ? 0xff4444 : 0x4da6ff;
-		for (const cell of trailCells) {
-			shotTrail.rect(cell.x * TILE, cell.y * TILE, TILE, TILE);
-			shotTrail.fill({ color: trailColor, alpha: 0.2 });
-		}
-		pixiApp.stage.addChild(shotTrail);
-		pixiApp.stage.setChildIndex(bullet, pixiApp.stage.children.length - 1);
-
-		const speed = (MAP_W * TILE) / 500;
-		const durationMs = dist / speed;
-
-		return new Promise<void>((resolve) => {
-			const startX = bullet.x;
-			const startY = bullet.y;
-			const startTime = performance.now();
-
-			function step(time: number) {
-				if (projectile.cancelled) {
-					setTimeout(() => shotTrail.destroy(), 80);
-					resolve();
-					return;
-				}
-				const elapsed = time - startTime;
-				const progress = Math.min(elapsed / Math.max(durationMs, 100), 1);
-
-				bullet.x = startX + (targetX - startX) * progress;
-				bullet.y = startY + (targetY - startY) * progress;
-
-				const collision = activeBullets.find(
-					(other) =>
-						other !== projectile &&
-						!other.cancelled &&
-						Math.hypot(other.sprite.x - bullet.x, other.sprite.y - bullet.y) < 18
-				);
-				if (collision) {
-					projectile.cancelled = true;
-					collision.cancelled = true;
-					for (const item of [projectile, collision]) {
-						const index = activeBullets.indexOf(item);
-						if (index >= 0) activeBullets.splice(index, 1);
-					}
-					const impact = new Graphics();
-					impact.circle(bullet.x, bullet.y, 18);
-					impact.fill({ color: 0xffffff, alpha: 0.8 });
-					pixiApp?.stage.addChild(impact);
-					if (!bullet.destroyed) bullet.destroy();
-					if (!collision.sprite.destroyed) collision.sprite.destroy();
-					setTimeout(() => impact.destroy(), 100);
-					setTimeout(() => shotTrail.destroy(), 80);
-					resolve();
-					return;
-				}
-
-				if (progress < 1) {
-					requestAnimationFrame(step);
-				} else {
-					if (hitWall && pixiApp) {
-						const impact = new Graphics();
-						impact.circle(targetX, targetY, 15);
-						impact.fill({ color: 0xffb347, alpha: 0.65 });
-						pixiApp.stage.addChild(impact);
-						setTimeout(() => impact.destroy(), 90);
-					}
-					bullet.destroy();
-					const bulletIndex = activeBullets.indexOf(projectile);
-					if (bulletIndex >= 0) activeBullets.splice(bulletIndex, 1);
-					setTimeout(() => shotTrail.destroy(), 80);
-					resolve();
-				}
-			}
-			requestAnimationFrame(step);
+		return combatEffects.animateProjectile({
+			texture: bulletTexture,
+			start: { x: tankGridX, y: tankGridY },
+			path,
+			direction: dir,
+			impact
 		});
 	}
 
@@ -368,11 +264,13 @@
 	}
 
 	export function setTankAlive(alive: boolean) {
-		if (tankSprite) tankSprite.visible = alive;
+		if (!tankSprite) return;
+		if (alive) tankSprite.visible = true;
+		else combatEffects?.explodeTank(tankSprite);
 	}
 
 	export function flashPlayerHit() {
-		if (tankSprite?.visible) flashSpriteHit(tankSprite);
+		combatEffects?.flashTank(tankSprite);
 	}
 
 	export async function setTankDir(dir: Direction) {
@@ -397,20 +295,38 @@
 			const startX = tankSprite!.x;
 			const startY = tankSprite!.y;
 			const startTime = performance.now();
-
-			function step(time: number) {
-				const elapsed = time - startTime;
-				const progress = Math.min(elapsed / durationMs, 1);
-				tankSprite!.x = startX + (targetX - startX) * progress;
-				tankSprite!.y = startY + (targetY - startY) * progress;
-
-				if (progress < 1) {
-					requestAnimationFrame(step);
-				} else {
+			const scaledDuration = durationMs / Math.min(2, Math.max(0.5, animationSpeed));
+			let finished = false;
+			const motion: ActiveMotion = {
+				frame: null,
+				finish: () => {
+					if (finished) return;
+					finished = true;
+					if (motion.frame !== null) cancelAnimationFrame(motion.frame);
+					activeMotions.delete(motion);
 					resolve();
 				}
+			};
+			activeMotions.add(motion);
+
+			function step(time: number) {
+				motion.frame = null;
+				if (disposed || !tankSprite || tankSprite.destroyed) {
+					motion.finish();
+					return;
+				}
+				const elapsed = time - startTime;
+				const progress = Math.min(elapsed / scaledDuration, 1);
+				tankSprite.x = startX + (targetX - startX) * progress;
+				tankSprite.y = startY + (targetY - startY) * progress;
+
+				if (progress < 1) {
+					motion.frame = requestAnimationFrame(step);
+				} else {
+					motion.finish();
+				}
 			}
-			requestAnimationFrame(step);
+			motion.frame = requestAnimationFrame(step);
 		});
 	}
 
@@ -420,7 +336,12 @@
 
 	export function restoreMissionScene(missionData: MissionData) {
 		if (!pixiApp || !brickTexture || !steelTexture) return;
-		if (tankSprite) tankSprite.visible = true;
+		cancelMotions();
+		combatEffects?.reset();
+		if (tankSprite) {
+			tankSprite.visible = true;
+			tankSprite.tint = 0xffffff;
+		}
 		for (const sprite of wallSprites.values()) sprite.destroy();
 		wallSprites.clear();
 		for (const wall of missionData.walls) {
@@ -437,6 +358,7 @@
 				const data = (missionData.enemies ?? [missionData.enemy])[index];
 				if (!data) continue;
 				sprite.visible = true;
+				sprite.tint = 0xffffff;
 				setSpritePos(sprite, data.x, data.y);
 				sprite.rotation = 0;
 			}
@@ -451,73 +373,91 @@
 		enemyActions: string[] = [enemyAction],
 		enemyHitIndexes: number[] = []
 	) {
-		const activeWalls = new Set(walls.map((wall) => `${wall.x},${wall.y}`));
+		const activeWalls = new SvelteSet(walls.map((wall) => `${wall.x},${wall.y}`));
 		const removeDestroyedWalls = () => {
 			for (const [key, sprite] of wallSprites) {
 				if (!activeWalls.has(key)) {
-					sprite.destroy();
+					combatEffects?.destroyWall(sprite);
 					wallSprites.delete(key);
 				}
 			}
 		};
+
 		for (const [index, sprite] of enemySprites.entries()) {
 			const state = enemies[index];
 			if (!state) continue;
-			sprite.visible = state.alive;
 			if (state.alive) {
+				sprite.visible = true;
 				sprite.rotation = { UP: Math.PI, RIGHT: -Math.PI / 2, DOWN: 0, LEFT: Math.PI / 2 }[
 					state.direction
 				];
-				setSpritePos(sprite, state.x, state.y);
-				if (enemyHitIndexes.includes(index)) flashSpriteHit(sprite);
+				if (!(index === 0 && enemyActions[index] === 'move')) {
+					setSpritePos(sprite, state.x, state.y);
+				}
 			}
 		}
-		const extraShots = enemySprites
+
+		const enemyShots = enemySprites
 			.map((sprite, index) => ({ sprite, state: enemies[index], action: enemyActions[index] }))
-			.filter(({ state, action }, index) => index > 0 && state?.alive && action === 'fire')
+			.filter(({ state, action, sprite }) => state && sprite.visible && action === 'fire')
 			.map(({ sprite, state }) =>
-				internalAnimateFire(sprite, state.direction, '/assets/kenney-remastered/bulletRed2.png')
+				internalAnimateFire(sprite, state!.direction, '/assets/kenney-remastered/bulletRed2.png')
 			);
-		if (extraShots.length) await Promise.all(extraShots);
-		if (!enemySprite) {
-			removeDestroyedWalls();
-			return;
-		}
+
+		let primaryMove: Promise<void> | undefined;
 		const primaryEnemy = enemies[0] ?? enemy;
 		const primaryAction = enemyActions[0] ?? enemyAction;
-		setEnemyDir(primaryEnemy.direction);
-		if (!primaryEnemy.alive) {
-			enemySprite.visible = false;
-			removeDestroyedWalls();
-			return;
-		}
-		enemySprite.visible = true;
-		if (primaryAction === 'move') {
+		if (enemySprite && primaryEnemy.alive && primaryAction === 'move') {
 			const startX = enemySprite.x;
 			const startY = enemySprite.y;
 			const targetX = primaryEnemy.x * TILE + TILE / 2;
 			const targetY = primaryEnemy.y * TILE + TILE / 2;
-			await new Promise<void>((resolve) => {
+			primaryMove = new Promise<void>((resolve) => {
 				const startTime = performance.now();
+				const scaledDuration = 250 / Math.min(2, Math.max(0.5, animationSpeed));
+				let finished = false;
+				const motion: ActiveMotion = {
+					frame: null,
+					finish: () => {
+						if (finished) return;
+						finished = true;
+						if (motion.frame !== null) cancelAnimationFrame(motion.frame);
+						activeMotions.delete(motion);
+						resolve();
+					}
+				};
+				activeMotions.add(motion);
 				function step(time: number) {
-					const progress = Math.min((time - startTime) / 250, 1);
-					enemySprite!.x = startX + (targetX - startX) * progress;
-					enemySprite!.y = startY + (targetY - startY) * progress;
-					if (progress < 1) requestAnimationFrame(step);
-					else resolve();
+					motion.frame = null;
+					if (disposed || !enemySprite || enemySprite.destroyed) {
+						motion.finish();
+						return;
+					}
+					const progress = Math.min((time - startTime) / scaledDuration, 1);
+					enemySprite.x = startX + (targetX - startX) * progress;
+					enemySprite.y = startY + (targetY - startY) * progress;
+					if (progress < 1) motion.frame = requestAnimationFrame(step);
+					else motion.finish();
 				}
-				requestAnimationFrame(step);
+				motion.frame = requestAnimationFrame(step);
 			});
-		} else if (primaryAction === 'fire') {
-			await internalAnimateFire(
-				enemySprite,
-				primaryEnemy.direction,
-				'/assets/kenney-remastered/bulletRed2.png'
-			);
-		} else {
+		} else if (enemySprite && primaryEnemy.alive && primaryAction !== 'fire') {
 			setSpritePos(enemySprite, primaryEnemy.x, primaryEnemy.y);
 		}
+
+		await Promise.all([...enemyShots, ...(primaryMove ? [primaryMove] : [])]);
 		removeDestroyedWalls();
+
+		for (const [index, sprite] of enemySprites.entries()) {
+			const state = enemies[index];
+			if (!state) continue;
+			if (enemyHitIndexes.includes(index)) {
+				if (state.alive) combatEffects?.flashTank(sprite);
+				else combatEffects?.explodeTank(sprite);
+			} else if (!state.alive && sprite.visible) {
+				combatEffects?.explodeTank(sprite);
+			}
+		}
 	}
 </script>
 

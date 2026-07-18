@@ -4,12 +4,32 @@
 
 	type AuthUser = { id: string; email: string; name: string; picture?: string; provider: string };
 	type MissionRecord = { best_score: number; completions: number; completed_at: string };
+	type BattleStats = {
+		matches: number;
+		wins: number;
+		losses: number;
+		draws: number;
+		rating?: number;
+	};
+	type ChallengeStats = BattleStats & {
+		best_score?: number;
+		shots?: number;
+		hits?: number;
+		walls_destroyed?: number;
+	};
+	type SavedCode = { code: string; updated_at: string };
+	type Achievement = { id: string; unlocked_at: string };
 	type Progress = {
 		completed_missions: number[];
 		completed_count: number;
 		total_missions: number;
 		total_score: number;
+		best_result: number;
 		missions: Record<string, MissionRecord>;
+		challenge: ChallengeStats;
+		pvp: BattleStats;
+		last_code: Record<string, SavedCode>;
+		achievements: Achievement[];
 	};
 
 	const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -31,7 +51,31 @@
 			if (!response.ok) throw new Error('Profile request failed');
 			const data = await response.json();
 			user = data.user;
-			progress = data.progress;
+			const raw = data.progress ?? {};
+			progress = {
+				completed_missions: raw.completed_missions ?? [],
+				completed_count: raw.completed_count ?? 0,
+				total_missions: raw.total_missions ?? 9,
+				total_score: raw.total_score ?? 0,
+				best_result: raw.best_result ?? 0,
+				missions: raw.missions ?? {},
+				last_code: raw.last_code ?? {},
+				achievements: raw.achievements ?? [],
+				challenge: {
+					matches: 0,
+					wins: 0,
+					losses: 0,
+					draws: 0,
+					...raw.challenge
+				},
+				pvp: {
+					matches: 0,
+					wins: 0,
+					losses: 0,
+					draws: 0,
+					...raw.pvp
+				}
+			};
 		} catch {
 			error = $t('profile.loadError');
 		} finally {
@@ -152,7 +196,7 @@
 					{error}
 				</p>{/if}
 
-			<section class="mb-7 grid gap-4 sm:grid-cols-3">
+			<section class="mb-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
 				<div
 					class="border-2 border-outline-variant bg-surface-container p-5 shadow-[5px_5px_0_#000]"
 				>
@@ -175,7 +219,133 @@
 						{$t('profile.progress')}
 					</p>
 				</div>
+				<div
+					class="border-2 border-outline-variant bg-surface-container p-5 shadow-[5px_5px_0_#000]"
+				>
+					<p class="text-3xl font-black text-tertiary">{progress.challenge.wins}</p>
+					<p class="text-xs font-bold text-on-surface-variant uppercase">{$t('profile.aiWins')}</p>
+				</div>
+				<div
+					class="border-2 border-outline-variant bg-surface-container p-5 shadow-[5px_5px_0_#000]"
+				>
+					<p class="text-3xl font-black text-primary">{progress.pvp.wins}</p>
+					<p class="text-xs font-bold text-on-surface-variant uppercase">{$t('profile.pvpWins')}</p>
+				</div>
 			</section>
+
+			<section class="mb-9 grid gap-5 lg:grid-cols-2">
+				<article
+					class="border-2 border-outline-variant bg-surface-container p-5 shadow-[5px_5px_0_#000]"
+				>
+					<p class="mb-4 text-[10px] font-bold tracking-widest text-tertiary uppercase">
+						{$t('profile.aiStats')}
+					</p>
+					<div class="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+						<div>
+							<b class="block text-xl text-primary">{progress.challenge.matches}</b>{$t(
+								'profile.matches'
+							)}
+						</div>
+						<div>
+							<b class="block text-xl text-secondary-fixed">{progress.challenge.wins}</b>{$t(
+								'profile.wins'
+							)}
+						</div>
+						<div>
+							<b class="block text-xl text-error">{progress.challenge.losses}</b>{$t(
+								'profile.losses'
+							)}
+						</div>
+						<div>
+							<b class="block text-xl text-tertiary">{progress.challenge.draws}</b>{$t(
+								'profile.draws'
+							)}
+						</div>
+					</div>
+					<p class="mt-4 text-xs text-on-surface-variant">
+						{$t('profile.bestResult')}: <b class="text-tertiary">{progress.best_result}</b> ·
+						{$t('profile.hits')}: {progress.challenge.hits ?? 0} ·
+						{$t('profile.walls')}: {progress.challenge.walls_destroyed ?? 0}
+					</p>
+				</article>
+				<article
+					class="border-2 border-outline-variant bg-surface-container p-5 shadow-[5px_5px_0_#000]"
+				>
+					<p class="mb-4 text-[10px] font-bold tracking-widest text-tertiary uppercase">
+						{$t('profile.pvpStats')}
+					</p>
+					<div class="mb-4 border-b-2 border-outline-variant pb-3">
+						<b class="text-3xl text-primary">{progress.pvp.rating ?? 1000}</b>
+						<span class="ml-2 text-xs text-on-surface-variant uppercase"
+							>{$t('pvp.yourRating')}</span
+						>
+					</div>
+					<div class="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+						<div>
+							<b class="block text-xl text-primary">{progress.pvp.matches}</b>{$t(
+								'profile.matches'
+							)}
+						</div>
+						<div>
+							<b class="block text-xl text-secondary-fixed">{progress.pvp.wins}</b>{$t(
+								'profile.wins'
+							)}
+						</div>
+						<div>
+							<b class="block text-xl text-error">{progress.pvp.losses}</b>{$t('profile.losses')}
+						</div>
+						<div>
+							<b class="block text-xl text-tertiary">{progress.pvp.draws}</b>{$t('profile.draws')}
+						</div>
+					</div>
+				</article>
+			</section>
+
+			<section class="mb-9">
+				<div class="mb-4 flex items-end justify-between gap-4">
+					<h2 class="text-2xl font-black text-primary uppercase">{$t('profile.achievements')}</h2>
+					<span class="text-xs text-on-surface-variant">{progress.achievements.length}/10</span>
+				</div>
+				{#if progress.achievements.length}
+					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+						{#each progress.achievements as achievement}
+							<article
+								class="border-2 border-secondary-fixed bg-surface-container p-4 shadow-[4px_4px_0_#000]"
+							>
+								<span class="mr-2 text-secondary-fixed">◆</span>
+								<b class="text-xs uppercase">{$t(`profile.achievementNames.${achievement.id}`)}</b>
+							</article>
+						{/each}
+					</div>
+				{:else}
+					<p
+						class="border-2 border-outline-variant bg-surface-container p-5 text-xs text-on-surface-variant"
+					>
+						{$t('profile.noAchievements')}
+					</p>
+				{/if}
+			</section>
+
+			{#if Object.keys(progress.last_code).length}
+				<section class="mb-9">
+					<h2 class="mb-4 text-2xl font-black text-primary uppercase">
+						{$t('profile.savedStrategies')}
+					</h2>
+					<div class="grid gap-4 lg:grid-cols-3">
+						{#each Object.entries(progress.last_code) as [mode, saved]}
+							<article
+								class="min-w-0 border-2 border-outline-variant bg-surface-container p-4 shadow-[4px_4px_0_#000]"
+							>
+								<p class="mb-3 text-[10px] font-black tracking-widest text-tertiary uppercase">
+									{mode}
+								</p>
+								<pre
+									class="max-h-28 overflow-hidden text-[10px] break-words whitespace-pre-wrap text-on-surface-variant">{saved.code}</pre>
+							</article>
+						{/each}
+					</div>
+				</section>
+			{/if}
 
 			<section>
 				<div class="mb-4 flex items-end justify-between gap-4">

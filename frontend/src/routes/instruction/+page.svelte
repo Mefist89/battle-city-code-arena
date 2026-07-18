@@ -57,9 +57,9 @@
 			{$t('instruction.manual')}
 		</div>
 		<a
-			href="/missions"
+			href="/tutorial"
 			class="border-2 border-primary px-3 py-1 text-xs font-bold text-primary hover:bg-primary hover:text-on-primary"
-			>{$t('instruction.start')}</a
+			>{$t('common.tutorial')}</a
 		>
 	</header>
 

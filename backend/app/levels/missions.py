@@ -80,3 +80,13 @@ PVP_MAPS: dict[int, set[tuple[int, int]]] = {
     2: {(2, 1), (2, 2), (2, 3), (7, 4), (7, 5), (7, 6), (4, 2), (5, 2), (4, 5), (5, 5)},
     3: {(3, 1), (4, 1), (5, 2), (6, 2), (2, 4), (3, 4), (6, 5), (7, 5), (4, 6), (5, 6)},
 }
+
+# Preserve the established arena appearance while making wall material a
+# server-owned gameplay property instead of a frontend-only visual guess.
+PVP_MAP_WALLS: dict[int, dict[tuple[int, int], str]] = {
+    map_id: {
+        cell: "steel" if (cell[0] + cell[1]) % 3 == 0 else "brick"
+        for cell in cells
+    }
+    for map_id, cells in PVP_MAPS.items()
+}
