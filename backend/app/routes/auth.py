@@ -3,7 +3,8 @@ from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from httpx import HTTPError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 from app.config import (
     FRONTEND_URL,
@@ -13,8 +14,17 @@ from app.config import (
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
     GOOGLE_REDIRECT_URI,
+    MAX_USER_CODE_LENGTH,
 )
-from app.profile_store import complete_mission, get_progress
+from app.profile_store import (
+    ProfileStoreCorrupted,
+    complete_mission,
+    delete_named_strategy,
+    get_progress,
+    save_named_strategy,
+)
+from app.session_store import store
+from app.simulator.mission_engine import MissionProgressClaimError, claim_verified_completion
 from app.simulator.pvp_engine import disconnect_user
 
 
@@ -23,7 +33,29 @@ oauth = OAuth()
 
 
 class MissionProgressRequest(BaseModel):
-    score: int = Field(default=0, ge=0, le=10_000_000)
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(min_length=12, max_length=12, pattern=r"^[a-f0-9]{12}$")
+
+
+class StrategyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = Field(default=None, min_length=12, max_length=12, pattern=r"^[a-f0-9]{12}$")
+    mode: Literal["mission", "challenge", "pvp"]
+    name: str = Field(min_length=1, max_length=24)
+    code: str = Field(min_length=1, max_length=MAX_USER_CODE_LENGTH)
+
+
+def _claim_verified_mission(session_id: str, mission_id: int) -> int:
+    """Return the server score for a completed, previously unclaimed session."""
+    with store.locked(session_id) as state:
+        if state is None:
+            raise HTTPException(status_code=404, detail="Game session not found or expired")
+        try:
+            return claim_verified_completion(state, mission_id)
+        except MissionProgressClaimError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
 if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
     oauth.register(
@@ -180,7 +212,11 @@ async def current_user(request: Request):
 @router.get("/profile")
 async def profile(request: Request):
     user = _session_user(request)
-    return {"user": user, "progress": get_progress(user["id"])}
+    try:
+        progress = get_progress(user["id"])
+    except ProfileStoreCorrupted as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"user": user, "progress": progress}
 
 
 @router.post("/progress/missions/{mission_id}")
@@ -192,7 +228,50 @@ async def save_mission_progress(
     if mission_id < 1 or mission_id > 9:
         raise HTTPException(status_code=400, detail="Mission ID must be between 1 and 9")
     user = _session_user(request)
-    return {"progress": complete_mission(user["id"], mission_id, payload.score)}
+    score = _claim_verified_mission(payload.session_id, mission_id)
+    try:
+        progress = complete_mission(user["id"], mission_id, score)
+    except Exception as exc:
+        # Permit a retry if durable profile storage temporarily failed.
+        with store.locked(payload.session_id) as state:
+            if state is not None:
+                state.progress_claimed = False
+        if isinstance(exc, ProfileStoreCorrupted):
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise
+    return {"progress": progress}
+
+
+@router.post("/strategies")
+async def save_strategy(payload: StrategyRequest, request: Request):
+    user = _session_user(request)
+    try:
+        strategy = save_named_strategy(
+            str(user["id"]),
+            mode=payload.mode,
+            name=payload.name,
+            code=payload.code,
+            strategy_id=payload.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ProfileStoreCorrupted as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"strategy": strategy}
+
+
+@router.delete("/strategies/{strategy_id}")
+async def delete_strategy(strategy_id: str, request: Request):
+    if len(strategy_id) != 12 or any(character not in "0123456789abcdef" for character in strategy_id):
+        raise HTTPException(status_code=400, detail="Invalid strategy ID")
+    user = _session_user(request)
+    try:
+        deleted = delete_named_strategy(str(user["id"]), strategy_id)
+    except ProfileStoreCorrupted as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    return {"ok": True}
 
 
 @router.post("/logout")

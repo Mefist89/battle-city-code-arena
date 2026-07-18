@@ -57,6 +57,20 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 Backend будет доступен по адресу `http://localhost:8000` (документация API — по адресу `/docs`).
 
+### Запуск через Docker Compose
+
+Перед первым запуском создайте локальный файл настроек и замените шаблонные
+OAuth-ключи и `AUTH_SESSION_SECRET` реальными значениями:
+
+```powershell
+Copy-Item backend/.env.example backend/.env
+docker compose up --build
+```
+
+Compose подключает `backend/.env` только во время запуска контейнера. Файл с
+секретами не копируется в Docker-образ и не должен добавляться в Git. Frontend
+будет доступен по адресу `http://localhost:3000`, backend — `http://localhost:8000`.
+
 ### 2. Запуск Frontend (SvelteKit)
 
 Откройте **новую вкладку** терминала:

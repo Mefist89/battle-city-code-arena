@@ -11,9 +11,11 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisco
 
 from app.config import (
     CORS_ORIGINS,
+    MAX_USER_CODE_LENGTH,
     PVP_CREATE_LIMIT,
     PVP_JOIN_LIMIT,
     PVP_RATE_WINDOW_SECONDS,
+    PVP_READY_TIMEOUT_SECONDS,
     PVP_WS_CONNECT_LIMIT,
     PVP_WS_IDLE_TIMEOUT_SECONDS,
     PVP_WS_MAX_MESSAGE_BYTES,
@@ -21,6 +23,13 @@ from app.config import (
     PVP_WS_MESSAGE_WINDOW_SECONDS,
 )
 from app.security.rate_limit import pvp_rate_limiter
+from app.profile_store import (
+    ProfileStoreCorrupted,
+    get_progress,
+    get_pvp_leaderboard,
+    get_pvp_rating,
+    save_last_code,
+)
 from app.simulator.pvp_engine import (
     ROOM_CODE_RE,
     RoomCapacityError,
@@ -29,15 +38,16 @@ from app.simulator.pvp_engine import (
     broadcast_room,
     create_room,
     join_room,
+    list_open_rooms,
     pvp_battle_loop,
     room_for_user,
     rooms,
     save_rooms_to_disk,
+    validate_pvp_strategy,
 )
 
 
 router = APIRouter()
-VALID_ACTIONS = {"move", "left", "right", "fire", "scan"}
 SLOT_RE = re.compile(r"^[12]$")
 
 
@@ -88,6 +98,69 @@ async def api_current_room(request: Request):
     }
 
 
+@router.delete("/api/rooms/current")
+async def api_leave_current_room(request: Request):
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = str(user["id"])
+    room = room_for_user(user_id)
+    if not room:
+        return {"left": False}
+    if room.get("phase") == "battle" and not room.get("winner"):
+        raise HTTPException(
+            status_code=409,
+            detail="An active battle cannot be abandoned without a server result",
+        )
+    slot = next(key for key, owner_id in room["player_ids"].items() if owner_id == user_id)
+    connection = room.get("connections", {}).pop(slot, None)
+    if connection:
+        try:
+            await connection.close(code=1000, reason="Left room")
+        except Exception:
+            pass
+    if slot == "1" or room.get("phase") == "finished":
+        rooms.pop(room["code"], None)
+    else:
+        for field in ("players", "player_ids", "ratings"):
+            room.get(field, {}).pop("2", None)
+        room["ready"] = set()
+        room["programs"] = {}
+        room["ready_deadline"] = None
+        room["last_active"] = time.time()
+        await broadcast_room(room, {"kind": "player_left", "slot": "2"})
+    save_rooms_to_disk()
+    return {"left": True}
+
+
+@router.get("/api/rooms")
+async def api_open_rooms(request: Request):
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return {"rooms": list_open_rooms()}
+
+
+@router.get("/api/pvp/leaderboard")
+async def api_pvp_leaderboard(request: Request):
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return {"players": get_pvp_leaderboard()}
+
+
+@router.get("/api/pvp/history")
+async def api_pvp_history(request: Request):
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    progress = get_progress(str(user["id"]))
+    return {
+        "rating": int(progress.get("pvp", {}).get("rating", 1000)),
+        "history": progress.get("pvp_history", []),
+    }
+
+
 @router.post("/api/rooms")
 async def api_create_room(player: RoomPlayer, request: Request):
     user = _session_user(request)
@@ -95,7 +168,13 @@ async def api_create_room(player: RoomPlayer, request: Request):
         raise HTTPException(status_code=401, detail="Authentication required")
     _protect_http(request, str(user["id"]), "create", PVP_CREATE_LIMIT)
     try:
-        room = create_room(str(user["id"]), str(user.get("name") or user.get("email") or "Player"), player.map_id)
+        room = create_room(
+            str(user["id"]),
+            str(user.get("name") or user.get("email") or "Player"),
+            player.map_id,
+            private=player.private,
+            rating=get_pvp_rating(str(user["id"])),
+        )
     except RoomConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except RoomCapacityError as exc:
@@ -113,7 +192,12 @@ async def api_join_room(code: str, player: RoomPlayer, request: Request):
         raise HTTPException(status_code=422, detail="Room code must contain 6 letters or digits")
     _protect_http(request, str(user["id"]), "join", PVP_JOIN_LIMIT)
     try:
-        room = join_room(code, str(user["id"]), str(user.get("name") or user.get("email") or "Player"))
+        room = join_room(
+            code,
+            str(user["id"]),
+            str(user.get("name") or user.get("email") or "Player"),
+            rating=get_pvp_rating(str(user["id"])),
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Room not found") from exc
     except RoomConflictError as exc:
@@ -161,12 +245,15 @@ async def room_socket(websocket: WebSocket, code: str, slot: str):
     if room.get("player_ids", {}).get(slot) != user_id:
         await _reject(websocket, 4403)
         return
-    if slot in room.get("connections", {}):
-        await _reject(websocket, 4409)
-        return
-
+    previous_connection = room.get("connections", {}).get(slot)
+    if previous_connection:
+        try:
+            await previous_connection.close(code=1012, reason="Reconnected from another client")
+        except Exception:
+            pass
     await websocket.accept()
     room["connections"][slot] = websocket
+    room.setdefault("disconnected_at", {}).pop(slot, None)
     room["last_active"] = time.time()
     await broadcast_room(room, {"kind": "joined", "slot": slot})
     try:
@@ -202,32 +289,58 @@ async def room_socket(websocket: WebSocket, code: str, slot: str):
             except (json.JSONDecodeError, TypeError):
                 await websocket.close(code=4400)
                 break
-            if not isinstance(message, dict) or set(message) != {"type", "actions"}:
+            if not isinstance(message, dict) or set(message) != {"type", "code"}:
                 await websocket.close(code=4400)
                 break
-            actions = message.get("actions")
+            code_text = message.get("code")
             if (
                 message.get("type") != "ready"
-                or not isinstance(actions, list)
-                or not 1 <= len(actions) <= 40
-                or any(not isinstance(action, str) or action not in VALID_ACTIONS for action in actions)
+                or not isinstance(code_text, str)
+                or not code_text.strip()
+                or len(code_text) > MAX_USER_CODE_LENGTH
             ):
-                await websocket.close(code=4400)
-                break
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "detail": f"Strategy code must contain 1 to {MAX_USER_CODE_LENGTH} characters",
+                    }
+                )
+                continue
             if room.get("winner") or room.get("phase") != "prepare" or slot in room["ready"]:
                 continue
 
-            room["programs"][slot] = actions
+            try:
+                validate_pvp_strategy(room, slot, code_text)
+            except (SyntaxError, ValueError) as error:
+                detail = error.msg if isinstance(error, SyntaxError) else str(error)
+                await websocket.send_json({"type": "error", "detail": detail})
+                continue
+
+            room["programs"][slot] = code_text
             room["ready"].add(slot)
+            if len(room["ready"]) == 1:
+                room["ready_deadline"] = time.time() + PVP_READY_TIMEOUT_SECONDS
+            try:
+                save_last_code(str(user["id"]), "pvp", code_text)
+            except (OSError, ProfileStoreCorrupted, ValueError):
+                # A storage problem must not disconnect a player from the room.
+                pass
             room["last_active"] = time.time()
+            battle_started = room["ready"] == {"1", "2"} and room["phase"] == "prepare"
+            if battle_started:
+                # Persist the new phase before scheduling the in-memory task.
+                # A restart can then recognize and safely recover this battle.
+                room["phase"] = "battle"
+                room["ready_deadline"] = None
             save_rooms_to_disk()
             await broadcast_room(room, {"kind": "ready", "slot": slot})
-            if room["ready"] == {"1", "2"} and room["phase"] == "prepare":
-                room["phase"] = "battle"
+            if battle_started:
                 asyncio.create_task(pvp_battle_loop(room))
     except WebSocketDisconnect:
         pass
     finally:
         if room.get("connections", {}).get(slot) is websocket:
             room["connections"].pop(slot, None)
+            if room.get("phase") == "battle" and not room.get("winner"):
+                room.setdefault("disconnected_at", {})[slot] = time.time()
             await broadcast_room(room, {"kind": "left", "slot": slot})

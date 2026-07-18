@@ -39,6 +39,18 @@ PVP_FINISHED_ROOM_TTL_SECONDS = int(os.getenv("PVP_FINISHED_ROOM_TTL_SECONDS", "
 PVP_ACTIVE_ROOM_TTL_SECONDS = int(os.getenv("PVP_ACTIVE_ROOM_TTL_SECONDS", "3600"))
 PVP_WS_IDLE_TIMEOUT_SECONDS = int(os.getenv("PVP_WS_IDLE_TIMEOUT_SECONDS", "300"))
 PVP_WS_MAX_MESSAGE_BYTES = int(os.getenv("PVP_WS_MAX_MESSAGE_BYTES", "32768"))
+PVP_RECONNECT_GRACE_SECONDS = int(os.getenv("PVP_RECONNECT_GRACE_SECONDS", "20"))
+PVP_READY_TIMEOUT_SECONDS = int(os.getenv("PVP_READY_TIMEOUT_SECONDS", "120"))
+
+# Single-player and Challenge abuse protection.
+MAX_USER_CODE_LENGTH = int(os.getenv("MAX_USER_CODE_LENGTH", "20000"))
+MAX_CHALLENGE_ACTIONS = int(os.getenv("MAX_CHALLENGE_ACTIONS", "100"))
+MAX_HTTP_REQUEST_BYTES = int(os.getenv("MAX_HTTP_REQUEST_BYTES", "65536"))
+GAME_RATE_WINDOW_SECONDS = int(os.getenv("GAME_RATE_WINDOW_SECONDS", "60"))
+GAME_RESET_IP_LIMIT = int(os.getenv("GAME_RESET_IP_LIMIT", "30"))
+GAME_RUN_IP_LIMIT = int(os.getenv("GAME_RUN_IP_LIMIT", "60"))
+GAME_RUN_SESSION_LIMIT = int(os.getenv("GAME_RUN_SESSION_LIMIT", "12"))
+CHALLENGE_IP_LIMIT = int(os.getenv("CHALLENGE_IP_LIMIT", "20"))
 
 # ── Authentication ────────────────────────────────────────────────────────────
 

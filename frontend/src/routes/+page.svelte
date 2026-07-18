@@ -8,11 +8,13 @@
 
 	let gameContainer = $state<HTMLDivElement | null>(null);
 	let previewApp: Application | null = null;
+	let pageDisposed = false;
 	let backendStatus = $state<'checking' | 'online' | 'offline'>('checking');
 	let mobileMenuOpen = $state(false);
 	let currentUser = $state<MenuUser | null>(null);
 
 	const navLinks = [
+		{ key: 'common.tutorial', href: '/tutorial' },
 		{ key: 'common.missions', href: '/missions' },
 		{ key: 'common.challenge', href: '/challenge-maps' },
 		{ key: 'common.pvp', href: '/pvp-maps' },
@@ -223,8 +225,12 @@
 		if (!gameContainer) return;
 
 		const app = new Application();
-		previewApp = app;
 		await app.init({ width: 560, height: 360, backgroundColor: 0x090b0f, antialias: false });
+		if (pageDisposed) {
+			app.destroy(true, { children: true });
+			return;
+		}
+		previewApp = app;
 		gameContainer.appendChild(app.canvas);
 
 		const tile = 56;
@@ -254,6 +260,7 @@
 			Assets.load('/assets/kenney-remastered/bulletBlue2.png'),
 			Assets.load('/assets/kenney-remastered/bulletRed2.png')
 		]);
+		if (pageDisposed) return;
 
 		for (const [x, y, type] of [
 			[4, 1, 'brick'],
@@ -322,6 +329,7 @@
 	});
 
 	onDestroy(() => {
+		pageDisposed = true;
 		previewApp?.destroy(true, { children: true });
 		previewApp = null;
 	});
@@ -866,8 +874,10 @@
 			</a>
 			<div class="flex flex-wrap justify-center gap-5 text-xs uppercase">
 				<a href="/" class="text-primary">{$t('common.home')}</a><a
-					href="/missions"
-					class="text-on-surface-variant hover:text-primary">{$t('common.missions')}</a
+					href="/tutorial"
+					class="text-on-surface-variant hover:text-primary">{$t('common.tutorial')}</a
+				><a href="/missions" class="text-on-surface-variant hover:text-primary"
+					>{$t('common.missions')}</a
 				><a href="/challenge-maps" class="text-on-surface-variant hover:text-primary"
 					>{$t('common.challenge')}</a
 				><a href="/pvp-maps" class="text-on-surface-variant hover:text-primary"

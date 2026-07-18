@@ -43,3 +43,4 @@ class SlidingWindowRateLimiter:
 
 
 pvp_rate_limiter = SlidingWindowRateLimiter()
+game_rate_limiter = SlidingWindowRateLimiter()

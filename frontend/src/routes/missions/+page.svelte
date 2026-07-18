@@ -3,90 +3,54 @@
 	const missions = [
 		{
 			id: 1,
-			title: 'Прямой маршрут',
-			difficulty: 'Легко',
-			objective: 'Доведи танк из A (1,6) в B (1,2).',
-			hint: 'Используй move() и цикл range().',
 			commands: 4,
 			color: 'text-secondary-fixed',
 			border: 'border-secondary-fixed'
 		},
 		{
 			id: 2,
-			title: 'Первый поворот',
-			difficulty: 'Средне',
-			objective: 'Доведи танк из A (1,6) в B (5,2).',
-			hint: 'Сначала двигайся вверх, затем поверни направо.',
 			commands: 9,
 			color: 'text-tertiary',
 			border: 'border-tertiary'
 		},
 		{
 			id: 3,
-			title: 'Маршрут командира',
-			difficulty: 'Сложно',
-			objective: 'Доведи танк из A (1,6) в B (8,1).',
-			hint: 'Составь маршрут из двух циклов и одного поворота.',
 			commands: 13,
 			color: 'text-primary',
 			border: 'border-primary'
 		},
 		{
 			id: 4,
-			title: 'Первый бой',
-			difficulty: 'Бой',
-			objective: 'Уничтожь красный танк и займи точку B (7,1).',
-			hint: 'Используй scan(), поворот и два точных выстрела.',
 			commands: 15,
 			color: 'text-error',
 			border: 'border-error'
 		},
 		{
 			id: 5,
-			title: 'Огневой коридор',
-			difficulty: 'Тяжело',
-			objective: 'Разрушь кирпичное укрытие, уничтожь врага и достигни B (8,2).',
-			hint: 'Сталь не разрушается — ищи линию огня через кирпич.',
 			commands: 18,
 			color: 'text-tertiary',
 			border: 'border-tertiary'
 		},
 		{
 			id: 6,
-			title: 'Стальная крепость',
-			difficulty: 'Командир',
-			objective: 'Победи усиленный танк с 150 HP и захвати B (8,1).',
-			hint: 'Потребуется три попадания. Используй стены как укрытие.',
 			commands: 22,
 			color: 'text-primary',
 			border: 'border-primary'
 		},
 		{
 			id: 7,
-			title: 'Двойная угроза',
-			difficulty: '2 противника',
-			objective: 'Уничтожь два вражеских танка и достигни точки B (8,3).',
-			hint: 'Следи за двумя направлениями атаки и используй стены как укрытие.',
 			commands: 26,
 			color: 'text-error',
 			border: 'border-error'
 		},
 		{
 			id: 8,
-			title: 'Перекрёстный огонь',
-			difficulty: '2 сильных врага',
-			objective: 'Победи два танка, атакующих с разных сторон, и захвати B (8,3).',
-			hint: "Используй scan(), условия и rotate('LEFT'/'RIGHT').",
 			commands: 30,
 			color: 'text-tertiary',
 			border: 'border-tertiary'
 		},
 		{
 			id: 9,
-			title: 'Тройная осада',
-			difficulty: '3 противника',
-			objective: 'Уничтожь три вражеских танка и достигни последней точки B (8,3).',
-			hint: 'Сначала уничтожь ближайшего врага, затем меняй позицию и линию огня.',
 			commands: 36,
 			color: 'text-primary',
 			border: 'border-primary'

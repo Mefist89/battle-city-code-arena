@@ -5,9 +5,17 @@
 from app.schemas.game import ROTATE_CW, ROTATE_CCW, MOVE_DELTA
 from app.levels.missions import PVP_WALLS
 
+from collections import deque
 import random
-import ast
-from app.simulator.python_runner import validate_user_code
+from app.simulator.strategy_parser import iter_strategy_actions
+
+DEFAULT_TICK_MS = 420
+EASY_TICK_MS = 500
+EASY_AI_THINK_MS = 1_000
+EASY_AI_FIRE_COOLDOWN_MS = 2_000
+MEDIUM_AI_FIRE_COOLDOWN_MS = 840
+HARD_AI_FIRE_COOLDOWN_MS = 1_260
+BATTLE_DURATION_MS = 30_000
 
 CHALLENGE_MAPS = {
     1: set(PVP_WALLS),
@@ -38,19 +46,23 @@ def line_of_sight(from_tank: dict, to_tank: dict, walls: set) -> bool:
 
 def fire_tank(shooter: dict, target: dict, walls: set, label: str) -> dict:
     path = []
+    event = {"kind": "fire", "slot": label, "path": path}
     dx, dy = MOVE_DELTA[shooter["direction"]]
     x, y = shooter["x"] + dx, shooter["y"] + dy
     while 0 <= x <= 9 and 0 <= y <= 7:
         path.append({"x": x, "y": y})
         if (x, y) in walls:
             walls.remove((x, y))
+            event["wall"] = {"x": x, "y": y, "destroyed": True}
             break
         if x == target["x"] and y == target["y"]:
             target["hp"] = max(0, target["hp"] - 25)
+            event["hit"] = "AI" if label == "PLAYER" else "PLAYER"
+            event["target_hp"] = target["hp"]
             break
         x += dx
         y += dy
-    return {"kind": "fire", "slot": label, "path": path}
+    return event
 
 def move_tank(tank: dict, other: dict, walls: set) -> bool:
     dx, dy = MOVE_DELTA[tank["direction"]]
@@ -71,10 +83,112 @@ def wall_in_direction(tank: dict, walls: set) -> bool:
         y += dy
     return False
 
-def ai_turn(ai: dict, player: dict, walls: set, difficulty: str) -> dict:
+
+def tank_is_facing(shooter: dict, target: dict, walls: set) -> bool:
+    """Return whether the target is in the shooter's unobstructed firing lane."""
+    if not line_of_sight(shooter, target, walls):
+        return False
+    return shooter["direction"] == direction_to_target(
+        shooter["x"], shooter["y"], target["x"], target["y"]
+    )
+
+
+def hard_dodge(ai: dict, player: dict, walls: set) -> dict | None:
+    """Move out of the player's firing lane when a hard AI sees the shot coming."""
+    if not tank_is_facing(player, ai, walls):
+        return None
+
+    if player["direction"] in ("LEFT", "RIGHT"):
+        candidates = ("UP", "DOWN")
+    else:
+        candidates = ("LEFT", "RIGHT")
+
+    valid: list[tuple[int, str]] = []
+    for direction in candidates:
+        dx, dy = MOVE_DELTA[direction]
+        nx, ny = ai["x"] + dx, ai["y"] + dy
+        if (
+            0 <= nx <= 9
+            and 0 <= ny <= 7
+            and (nx, ny) not in walls
+            and (nx, ny) != (player["x"], player["y"])
+        ):
+            distance = abs(nx - player["x"]) + abs(ny - player["y"])
+            valid.append((distance, direction))
+
+    if not valid:
+        return None
+
+    _, direction = max(valid)
+    ai["direction"] = direction
+    move_tank(ai, player, walls)
+    return {"kind": "move", "slot": "AI", "dodged": True}
+
+
+def hard_route_direction(ai: dict, player: dict, walls: set) -> str | None:
+    """Find the first step towards a safe cell with a clear shot at the player."""
+    start = (ai["x"], ai["y"])
+    occupied = (player["x"], player["y"])
+    queue = deque([(start[0], start[1], None, 0)])
+    visited = {start}
+    current_depth = 0
+    goals: list[tuple[bool, str]] = []
+    directions = ("UP", "RIGHT", "DOWN", "LEFT")
+
+    while queue:
+        x, y, first_direction, depth = queue.popleft()
+        if depth > current_depth and goals:
+            break
+        current_depth = depth
+
+        if first_direction is not None:
+            candidate = {"x": x, "y": y, "direction": "UP", "hp": ai["hp"]}
+            if line_of_sight(candidate, player, walls):
+                exposed = tank_is_facing(player, candidate, walls)
+                goals.append((exposed, first_direction))
+                continue
+
+        for direction in directions:
+            dx, dy = MOVE_DELTA[direction]
+            nx, ny = x + dx, y + dy
+            position = (nx, ny)
+            if (
+                not (0 <= nx <= 9 and 0 <= ny <= 7)
+                or position in visited
+                or position in walls
+                or position == occupied
+            ):
+                continue
+            visited.add(position)
+            queue.append((nx, ny, first_direction or direction, depth + 1))
+
+    if not goals:
+        return None
+    safe_goals = [direction for exposed, direction in goals if not exposed]
+    return safe_goals[0] if safe_goals else goals[0][1]
+
+
+def move_or_turn(ai: dict, player: dict, walls: set, wanted: str) -> dict:
+    if ai["direction"] != wanted:
+        ai["direction"] = wanted
+        return {"kind": "rotate", "slot": "AI"}
+    if move_tank(ai, player, walls):
+        return {"kind": "move", "slot": "AI"}
+    ai["direction"] = ROTATE_CW[ai["direction"]]
+    return {"kind": "rotate", "slot": "AI"}
+
+def ai_turn(
+    ai: dict,
+    player: dict,
+    walls: set,
+    difficulty: str,
+    can_fire: bool = True,
+) -> dict:
     if line_of_sight(ai, player, walls):
         ai["direction"] = direction_to_target(ai["x"], ai["y"], player["x"], player["y"])
-        return fire_tank(ai, player, walls, "AI")
+        if can_fire:
+            return fire_tank(ai, player, walls, "AI")
+        return {"kind": "scan", "slot": "AI"}
 
     if difficulty == "easy":
         choice = random.random()
@@ -84,6 +198,11 @@ def ai_turn(ai: dict, player: dict, walls: set, difficulty: str) -> dict:
             ai["direction"] = ROTATE_CW[ai["direction"]]
             return {"kind": "rotate", "slot": "AI"}
     
+    if difficulty == "hard":
+        route_direction = hard_route_direction(ai, player, walls)
+        if route_direction:
+            return move_or_turn(ai, player, walls, route_direction)
+
     wanted = "LEFT" if player["x"] < ai["x"] else "RIGHT"
     if abs(player["x"] - ai["x"]) >= abs(player["y"] - ai["y"]):
         wanted = "LEFT" if player["x"] < ai["x"] else "RIGHT"
@@ -93,15 +212,12 @@ def ai_turn(ai: dict, player: dict, walls: set, difficulty: str) -> dict:
     if ai["direction"] != wanted:
         ai["direction"] = wanted
         return {"kind": "rotate", "slot": "AI"}
-    else:
-        # Medium and Hard AI clear brick walls that obstruct their chosen route.
-        # Easy AI deliberately keeps the simpler movement-only behaviour.
-        if difficulty in ("medium", "hard") and wall_in_direction(ai, walls):
-            return fire_tank(ai, player, walls, "AI")
-        if not move_tank(ai, player, walls):
-            ai["direction"] = ROTATE_CW[ai["direction"]]
-            return {"kind": "rotate", "slot": "AI"}
-        return {"kind": "move", "slot": "AI"}
+
+    # Medium clears walls aggressively; Hard only spends a shot when no open
+    # route to a firing position exists. Easy keeps movement-only behaviour.
+    if difficulty in ("medium", "hard") and wall_in_direction(ai, walls) and can_fire:
+        return fire_tank(ai, player, walls, "AI")
+    return move_or_turn(ai, player, walls, wanted)
 
 def player_turn(player: dict, ai: dict, walls: set, action: str) -> dict:
     if action == "move":
@@ -117,46 +233,36 @@ def player_turn(player: dict, ai: dict, walls: set, action: str) -> dict:
         return {"kind": action, "slot": "PLAYER", "hit": hit}
     return {"kind": action, "slot": "PLAYER"}
 
-def strategy_actions(code: str, player: dict, ai: dict, walls: set):
-    tree = validate_user_code(code)
 
-    def call_action(call: ast.Call) -> str | None:
-        name = call.func.id
-        if name == "rotate":
-            if call.args and isinstance(call.args[0], ast.Constant):
-                return "rotate_left" if str(call.args[0].value).upper() == "LEFT" else "rotate_right"
-            return "rotate"
-        return name if name in {"move", "fire", "scan"} else None
+def resolve_challenge_turn(
+    player: dict,
+    ai: dict,
+    walls: set[tuple[int, int]],
+    action: str | None,
+    difficulty: str,
+    ai_can_act: bool = True,
+    ai_can_fire: bool = True,
+) -> tuple[dict | None, dict | None, set[tuple[int, int]], tuple[int, int], set[tuple[int, int]]]:
+    """Resolve both intentions against the walls visible at tick start."""
+    hp_before_turn = (player["hp"], ai["hp"])
+    walls_before_turn = walls.copy()
 
-    def execute_block(statements):
-        for statement in statements:
-            if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
-                action = call_action(statement.value)
-                if action:
-                    yield action
-            elif isinstance(statement, ast.For):
-                count = 0
-                if isinstance(statement.iter, ast.Call) and statement.iter.func.id == "range":
-                    values = [arg.value for arg in statement.iter.args if isinstance(arg, ast.Constant)]
-                    count = len(range(*values)) if values else 0
-                for _ in range(min(count, 40)):
-                    yield from execute_block(statement.body)
-            elif isinstance(statement, ast.If):
-                if isinstance(statement.test, ast.Call) and statement.test.func.id == "scan":
-                    yield "scan"
-                    branch = statement.body if line_of_sight(player, ai, walls) else statement.orelse
-                    yield from execute_block(branch)
-            elif isinstance(statement, ast.While):
-                for _ in range(40):
-                    if not (isinstance(statement.test, ast.Call) and statement.test.func.id == "scan"):
-                        break
-                    yield "scan"
-                    if not line_of_sight(player, ai, walls):
-                        break
-                    yield from execute_block(statement.body)
+    # Hard AI can read the player's turret direction and leave a clear firing
+    # lane before a projectile reaches its previous cell.
+    a_event = None
+    ai_walls = walls_before_turn.copy()
+    if ai_can_act and difficulty == "hard" and action == "fire":
+        a_event = hard_dodge(ai, player, ai_walls)
 
-    yield from execute_block(tree.body)
+    p_event = player_turn(player, ai, walls, action) if action else None
+    walls_after_player = walls.copy()
 
+    if ai_can_act and ai["hp"] > 0 and a_event is None:
+        a_event = ai_turn(ai, player, ai_walls, difficulty, ai_can_fire)
+
+    # Apply wall destruction from either intent only after both were calculated.
+    merged_walls = walls_after_player & ai_walls
+    return p_event, a_event, merged_walls, hp_before_turn, walls_before_turn
 
 def simulate_challenge(actions: list[str], difficulty: str = "medium", map_id: int = 1, code: str | None = None) -> dict:
     hp_map = {"easy": 50, "medium": 100, "hard": 150}
@@ -165,22 +271,44 @@ def simulate_challenge(actions: list[str], difficulty: str = "medium", map_id: i
     player = {"x": 1, "y": 6, "direction": "UP", "hp": 100}
     ai = {"x": 8, "y": 1, "direction": "DOWN", "hp": ai_hp}
     walls = set(CHALLENGE_MAPS.get(map_id, CHALLENGE_MAPS[1]))
-    action_stream = strategy_actions(code, player, ai, walls) if code else iter(actions)
+    action_stream = (
+        iter_strategy_actions(code, lambda: line_of_sight(player, ai, walls))
+        if code
+        else iter(actions)
+    )
     
+    tick_ms = EASY_TICK_MS if difficulty == "easy" else DEFAULT_TICK_MS
+    max_ticks = (BATTLE_DURATION_MS + tick_ms - 1) // tick_ms
     ticks = []
+    easy_ai_elapsed_ms = 0
+    ai_last_fire_ms: int | None = None
     
-    for _ in range(72):
+    for tick_index in range(max_ticks):
         if player["hp"] <= 0 or ai["hp"] <= 0:
             break
             
-        hp_before_turn = (player["hp"], ai["hp"])
-        walls_before_turn = walls.copy()
         action = next(action_stream, None)
-        p_event = player_turn(player, ai, walls, action) if action else None
-        
-        a_event = None
-        if ai["hp"] > 0:
-            a_event = ai_turn(ai, player, walls, difficulty)
+        ai_can_act = True
+        if difficulty == "easy":
+            easy_ai_elapsed_ms += tick_ms
+            ai_can_act = easy_ai_elapsed_ms >= EASY_AI_THINK_MS
+            if ai_can_act:
+                easy_ai_elapsed_ms -= EASY_AI_THINK_MS
+        elapsed_battle_ms = (tick_index + 1) * tick_ms
+        fire_cooldown_ms = {
+            "easy": EASY_AI_FIRE_COOLDOWN_MS,
+            "medium": MEDIUM_AI_FIRE_COOLDOWN_MS,
+            "hard": HARD_AI_FIRE_COOLDOWN_MS,
+        }.get(difficulty, MEDIUM_AI_FIRE_COOLDOWN_MS)
+        ai_can_fire = (
+            ai_last_fire_ms is None
+            or elapsed_battle_ms - ai_last_fire_ms >= fire_cooldown_ms
+        )
+        p_event, a_event, walls, hp_before_turn, walls_before_turn = resolve_challenge_turn(
+            player, ai, walls, action, difficulty, ai_can_act, ai_can_fire
+        )
+        if a_event and a_event.get("kind") == "fire":
+            ai_last_fire_ms = elapsed_battle_ms
 
         # Resolve simultaneous projectiles before applying tank or wall damage.
         if (
@@ -214,6 +342,10 @@ def simulate_challenge(actions: list[str], difficulty: str = "medium", map_id: i
                 a_event["path"] = ai_path[: ai_index + 1]
                 p_event["collision"] = True
                 a_event["collision"] = True
+                for event in (p_event, a_event):
+                    event.pop("hit", None)
+                    event.pop("target_hp", None)
+                    event.pop("wall", None)
                 player["hp"], ai["hp"] = hp_before_turn
                 walls = walls_before_turn
             
@@ -228,4 +360,4 @@ def simulate_challenge(actions: list[str], difficulty: str = "medium", map_id: i
     if player["hp"] > ai["hp"]: winner = "PLAYER"
     elif ai["hp"] > player["hp"]: winner = "AI"
         
-    return {"ticks": ticks, "winner": winner}
+    return {"ticks": ticks, "winner": winner, "tick_ms": tick_ms}

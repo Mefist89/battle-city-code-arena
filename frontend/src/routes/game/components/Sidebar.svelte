@@ -55,7 +55,7 @@
 </script>
 
 <aside
-	class="flex w-48 shrink-0 flex-col border-r-2 border-outline-variant bg-surface-container-low"
+	class="hidden w-48 shrink-0 flex-col border-r-2 border-outline-variant bg-surface-container-low lg:flex"
 >
 	<div
 		class="border-b-2 border-outline-variant px-3 py-2 text-xs font-bold tracking-widest text-on-surface-variant uppercase"
